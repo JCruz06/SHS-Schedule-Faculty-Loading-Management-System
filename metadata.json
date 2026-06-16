@@ -1,0 +1,6 @@
+{
+  "name": "SHS Schedule & Faculty Loading Management System",
+  "description": "A comprehensive scheduling and faculty loading management dashboard for Senior High School administrators in the Philippines, featuring Grade 11 and Grade 12 split shifts, conflict detection, and reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

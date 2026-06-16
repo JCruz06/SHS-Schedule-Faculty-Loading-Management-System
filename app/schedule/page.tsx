@@ -1,0 +1,524 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useApp } from '../../lib/AppContext';
+import { DashboardLayout } from '../../components/layout/DashboardLayout';
+import {
+  Calendar,
+  Layers,
+  X,
+  AlertTriangle,
+  Flame,
+  CheckCircle,
+  Clock,
+  UserSquare,
+  BookmarkCheck,
+  ChevronRight,
+  Info
+} from 'lucide-react';
+import { ScheduleEntry, TimeSlot, Teacher, Section, Subject } from '../../types';
+import { formatTime24To12 } from '../../lib/helpers';
+
+export default function ScheduleBuilderPage() {
+  const {
+    teachers,
+    strands,
+    sections,
+    subjects,
+    timeSlots,
+    scheduleEntries,
+    saveScheduleEntry,
+    clearScheduleEntry,
+    conflicts,
+  } = useApp();
+
+  // Selection state
+  const [viewBy, setViewBy] = useState<'section' | 'teacher'>('section');
+  const [activeSectionId, setActiveSectionId] = useState<string>(
+    sections.length > 0 ? sections[0].id : ''
+  );
+  const [activeTeacherId, setActiveTeacherId] = useState<string>(
+    teachers.length > 0 ? teachers[0].id : ''
+  );
+  const [selectedShift, setSelectedShift] = useState<'Morning' | 'Afternoon'>('Morning');
+
+  // Side form panel state
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday'>('Monday');
+  const [selectedSlotId, setSelectedSlotId] = useState<string>('');
+
+  // Form Fields inside side-drawer
+  const [formTeacherId, setFormTeacherId] = useState('');
+  const [formSubjectId, setFormSubjectId] = useState('');
+  const [formSectionId, setFormSectionId] = useState('');
+
+  // Determine which list of slots to render
+  const currentSection = sections.find(s => s.id === activeSectionId);
+  const currentTeacher = teachers.find(t => t.id === activeTeacherId);
+
+  const activeShift = viewBy === 'section'
+    ? (currentSection?.grade_level === 11 ? 'Morning' : 'Afternoon')
+    : selectedShift;
+
+  const currentSlots = timeSlots.filter(s => s.shift === activeShift);
+  const days: ('Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday')[] = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+  ];
+
+  // Helper: Find schedule entry for given cell
+  const findEntry = (day: string, slotId: string) => {
+    return scheduleEntries.find(e => {
+      if (e.day !== day || e.time_slot_id !== slotId) return false;
+      if (viewBy === 'section') {
+        return e.section_id === activeSectionId;
+      } else {
+        return e.teacher_id === activeTeacherId;
+      }
+    });
+  };
+
+  // Open sidebar-drawer for clickable cell
+  const handleCellClick = (day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday', slot: TimeSlot) => {
+    if (slot.is_recess) return; // Non-clickable recess rows
+
+    setSelectedDay(day);
+    setSelectedSlotId(slot.id);
+
+    // See if exists to load pre-fill values
+    const existingEntry = findEntry(day, slot.id);
+
+    if (existingEntry) {
+      setFormTeacherId(existingEntry.teacher_id);
+      setFormSubjectId(existingEntry.subject_id);
+      setFormSectionId(existingEntry.section_id);
+    } else {
+      // Clear out form fields or pre-fill logically
+      setFormTeacherId(viewBy === 'teacher' ? activeTeacherId : teachers.length > 0 ? teachers[0].id : '');
+      setFormSectionId(viewBy === 'section' ? activeSectionId : sections.length > 0 ? sections[0].id : '');
+      
+      // Auto pre-fill first subject of section/strand
+      const sec = viewBy === 'section' ? currentSection : sections.find(s => s.id === formSectionId);
+      const filteredSubjects = sec ? subjects.filter(sub => sub.strand_id === sec.strand_id) : subjects;
+      setFormSubjectId(filteredSubjects.length > 0 ? filteredSubjects[0].id : '');
+    }
+
+    setSidePanelOpen(true);
+  };
+
+  const handleSaveEntry = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formTeacherId || !formSubjectId || !formSectionId || !selectedSlotId) return;
+
+    saveScheduleEntry({
+      teacher_id: formTeacherId,
+      section_id: formSectionId,
+      subject_id: formSubjectId,
+      time_slot_id: selectedSlotId,
+      day: selectedDay,
+    });
+
+    setSidePanelOpen(false);
+  };
+
+  const handleClearEntry = () => {
+    if (!selectedSlotId) return;
+    const activeCriteriaId = viewBy === 'teacher' ? activeTeacherId : activeSectionId;
+    clearScheduleEntry(selectedDay, selectedSlotId, activeCriteriaId, viewBy);
+    setSidePanelOpen(false);
+  };
+
+  // Compute live conflicts matching this specific workspace
+  const getCellConflicts = (day: string, slotId: string) => {
+    const entry = findEntry(day, slotId);
+    if (!entry) return [];
+    return conflicts.filter(c => c.scheduleEntryId === entry.id);
+  };
+
+  // Subject options linked to the selected section
+  const currentFormSection = sections.find(s => s.id === formSectionId);
+  const eligibleSubjects = currentFormSection
+    ? subjects.filter(sub => sub.strand_id === currentFormSection.strand_id)
+    : subjects;
+
+  const currentCellConflict = conflicts.filter(c => {
+    if (viewBy === 'section') {
+      return (
+        c.affectedSectionId === activeSectionId &&
+        c.description.includes(selectedDay) &&
+        c.scheduleEntryId !== undefined
+      );
+    } else {
+      return (
+        c.affectedTeacherId === activeTeacherId &&
+        c.description.includes(selectedDay) &&
+        c.scheduleEntryId !== undefined
+      );
+    }
+  });
+
+  return (
+    <DashboardLayout>
+      <div id="schedule-module-canvas" className="p-6 md:p-8 space-y-6 relative min-h-[calc(100vh-4rem)]">
+        
+        {/* Filter Control Bar Header */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-slate-950 flex items-center gap-2.5">
+              <Calendar className="w-6 h-6 text-blue-600" />
+              <span>Real-time Schedule Timetables</span>
+            </h2>
+            
+            {/* View Mode Grid/Toggle buttons */}
+            <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+              <button
+                onClick={() => setViewBy('section')}
+                className={`px-4.5 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  viewBy === 'section'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-505 hover:text-slate-800'
+                }`}
+              >
+                View by Section Timetable
+              </button>
+              <button
+                onClick={() => setViewBy('teacher')}
+                className={`px-4.5 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  viewBy === 'teacher'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-505 hover:text-slate-800'
+                }`}
+              >
+                View by Teacher Timetable
+              </button>
+            </div>
+          </div>
+
+          {/* Filtering Dropdowns */}
+          <div className="flex flex-wrap items-center gap-4.5">
+            {viewBy === 'section' ? (
+              <div className="space-y-1.5 min-w-56">
+                <label className="block text-3xs font-extrabold text-slate-400 uppercase tracking-widest">Select Class Section</label>
+                <select
+                  value={activeSectionId}
+                  onChange={(e) => setActiveSectionId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                >
+                  {sections.map(sec => {
+                    const strand = strands.find(s => s.id === sec.strand_id);
+                    return (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.name} (Grade {sec.grade_level} - {sec.shift})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5 min-w-56">
+                  <label className="block text-3xs font-extrabold text-slate-400 uppercase tracking-widest">Select Faculty Member</label>
+                  <select
+                    value={activeTeacherId}
+                    onChange={(e) => setActiveTeacherId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                  >
+                    {teachers.map(teach => (
+                      <option key={teach.id} value={teach.id}>
+                        {teach.name} ({teach.specialization})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-3xs font-extrabold text-slate-400 uppercase tracking-widest">Shift Window</label>
+                  <select
+                    value={selectedShift}
+                    onChange={(e) => setSelectedShift(e.target.value as any)}
+                    className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Morning">Morning Shift (Grade 11 Slotset)</option>
+                    <option value="Afternoon">Afternoon Shift (Grade 12 Slotset)</option>
+                  </select>
+                </div>
+              </>
+            )}
+            
+            {/* Display indicator */}
+            <div className="px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-lg text-xs font-semibold text-blue-800 self-end">
+              Shift Assigned: <span className="underline">{activeShift} Shift</span>
+            </div>
+          </div>
+        </div>
+
+        {/* TIME GRID TIMETABLE SHEET */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table id="schedule-grid-table" className="min-w-full text-sm border-collapse text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-250 text-slate-650 text-2xs uppercase tracking-wider font-extrabold font-mono">
+                  <th className="py-4.5 px-6 border-r border-slate-200 w-44">Time / Period</th>
+                  {days.map(day => (
+                    <th key={day} className="py-4.5 px-4 text-center border-r border-slate-150 min-w-44">
+                      {day}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {currentSlots.map(slot => {
+                  const label = slot.period_label;
+                  const duration = `${formatTime24To12(slot.start_time)} - ${formatTime24To12(slot.end_time)}`;
+                  
+                  if (slot.is_recess) {
+                    return (
+                      <tr key={slot.id} className="bg-slate-100 text-slate-400 select-none">
+                        <td className="py-3 px-6 border-r border-slate-200 align-middle">
+                          <div className="font-extrabold text-2xs tracking-widest">{label.toUpperCase()}</div>
+                          <div className="text-4xs mt-0.5">{duration}</div>
+                        </td>
+                        {days.map(day => (
+                          <td key={day} className="py-3 px-4 border-r border-slate-150 text-center font-bold text-xs uppercase tracking-widest relative">
+                            Recess Break
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr key={slot.id} className="hover:bg-slate-50/40 transition-colors">
+                      {/* Left time marker */}
+                      <td className="py-5 px-6 border-r border-slate-200 bg-slate-50/30 align-middle">
+                        <div className="font-bold text-slate-900 text-xs sm:text-sm">{label}</div>
+                        <div className="text-3xs text-slate-405 font-medium mt-0.5 font-mono">{duration}</div>
+                      </td>
+
+                      {/* Days Cell allocations */}
+                      {days.map(day => {
+                        const entry = findEntry(day, slot.id);
+                        const cellConflicts = getCellConflicts(day, slot.id);
+                        const isConflict = cellConflicts.length > 0;
+
+                        let subjectObj = entry ? subjects.find(s => s.id === entry.subject_id) : null;
+                        let teacherObj = entry ? teachers.find(t => t.id === entry.teacher_id) : null;
+                        let sectionObj = entry ? sections.find(s => s.id === entry.section_id) : null;
+
+                        return (
+                          <td
+                            key={day}
+                            onClick={() => handleCellClick(day, slot)}
+                            className={`py-4 px-4 border-r border-slate-150 transition-all cursor-pointer relative group ${
+                              isConflict
+                                ? 'bg-red-50/60 hover:bg-red-50 border-red-200'
+                                : entry
+                                ? 'bg-blue-50/10 hover:bg-blue-50/30 border-blue-100'
+                                : 'hover:bg-slate-50 border-transparent text-slate-400 text-2xs italic'
+                            }`}
+                          >
+                            {entry ? (
+                              <div className="space-y-1.5 text-center">
+                                <h5 className="font-bold text-slate-900 text-xs tracking-tight line-clamp-2">
+                                  {subjectObj?.name || 'Invalid Subject'}
+                                </h5>
+                                
+                                <span className="inline-flex items-center text-3xs font-semibold text-slate-505 tracking-wide">
+                                  {viewBy === 'section'
+                                    ? `Tchr: ${teacherObj?.name || 'Unassigned'}`
+                                    : `Sec: ${sectionObj?.name || 'Unassigned'}`}
+                                </span>
+
+                                {/* Conflict indicator badges */}
+                                {isConflict && (
+                                  <div className="mt-1.5 flex justify-center">
+                                    <span className="inline-flex items-center gap-1 bg-red-400 text-white text-4xs font-bold uppercase py-0.5 px-2 rounded-full ring-2 ring-white tracking-widest">
+                                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                                      Conflict
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-center py-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span className="text-5xs uppercase tracking-wider font-extrabold text-blue-500 bg-blue-50 rounded border border-blue-105 px-1.5 py-1">
+                                  + Schedule Unit
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* SLIDE OUT Form Drawer Panel */}
+        {sidePanelOpen && (
+          <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+            {/* Backdrop slide trigger */}
+            <div
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-3xs transition-opacity duration-300 pointer-events-auto"
+              onClick={() => setSidePanelOpen(false)}
+            />
+            
+            {/* Content Drawer Box */}
+            <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col h-full z-10 border-l border-slate-200 transform transition-transform duration-300 translate-x-0">
+              
+              {/* Drawer Header */}
+              <div className="p-6 border-b border-slate-250 flex items-center justify-between bg-slate-50">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <UserSquare className="w-5 h-5 text-blue-600" />
+                    <span>Timetable Block Setup</span>
+                  </h3>
+                  <p className="text-3xs text-slate-500 font-mono tracking-wider uppercase">
+                    Slot: {selectedDay} · {timeSlots.find(t => t.id === selectedSlotId)?.period_label}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSidePanelOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Form Input fields */}
+              <form onSubmit={handleSaveEntry} className="flex-1 overflow-y-auto p-6 space-y-5">
+                
+                {/* Field 1: Class Section */}
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Target Class Section <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formSectionId}
+                    onChange={(e) => {
+                      setFormSectionId(e.target.value);
+                      // Auto select first eligible subject
+                      const sec = sections.find(s => s.id === e.target.value);
+                      const eligibleSubs = sec ? subjects.filter(sub => sub.strand_id === sec.strand_id) : subjects;
+                      if (eligibleSubs.length > 0) {
+                        setFormSubjectId(eligibleSubs[0].id);
+                      }
+                    }}
+                    disabled={viewBy === 'section'} // Lock if viewBy is section
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all disabled:opacity-75 disabled:bg-slate-100"
+                  >
+                    {sections.map(sec => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.name} (Grade {sec.grade_level})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Field 2: Select Course Subject */}
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Timetable Subject Course <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formSubjectId}
+                    onChange={(e) => setFormSubjectId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all overflow-hidden text-ellipsis"
+                  >
+                    {eligibleSubjects.length === 0 ? (
+                      <option value="">* No active subjects configured for this strand!</option>
+                    ) : (
+                      eligibleSubjects.map(sub => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} (Req: {sub.required_specialization} · {sub.hours_per_week}h/wk)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {eligibleSubjects.length === 0 && (
+                    <p className="text-3xs text-red-500 mt-1.5">Ensure you add subjects under the target strand track before scheduling.</p>
+                  )}
+                </div>
+
+                {/* Field 3: Assign Instructor */}
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Assigned Faculty Instructor <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formTeacherId}
+                    onChange={(e) => setFormTeacherId(e.target.value)}
+                    disabled={viewBy === 'teacher'} // Lock if viewBy is teacher
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all disabled:opacity-75 disabled:bg-slate-100"
+                  >
+                    {teachers.map(teach => (
+                      <option key={teach.id} value={teach.id}>
+                        {teach.name} (Specialty: {teach.specialization})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Real-time warnings helper block */}
+                <div className="bg-slate-50 border border-slate-205 p-4.5 rounded-xl space-y-2.5">
+                  <h4 className="text-3xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Real-time Cell Conflict Warnings</span>
+                  </h4>
+                  
+                  {/* Query matches */}
+                  {currentCellConflict.length > 0 ? (
+                    <div className="space-y-2">
+                      {currentCellConflict.map((conf, index) => (
+                        <div key={index} className="flex gap-2 text-xs font-medium text-red-700 leading-relaxed bg-red-50 border border-red-105 p-2 rounded-md">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                          <p>{conf.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 text-[11px] text-emerald-700 leading-relaxed bg-emerald-50 border border-emerald-100 p-2.5 rounded-md">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                      <p>Current cell assignments conform to standard constraints. No double-bookings or shift violations.</p>
+                    </div>
+                  )}
+                </div>
+
+              </form>
+
+              {/* Drawer Controls footer */}
+              <div className="p-6 border-t border-slate-200 bg-slate-50 flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSaveEntry}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <BookmarkCheck className="w-4 h-4" />
+                  <span>Save Cell Assignment</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleClearEntry}
+                  className="w-full py-3 bg-white border border-red-200 hover:bg-red-50 text-red-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Wipe Cell From Timetable</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+      </div>
+    </DashboardLayout>
+  );
+}
