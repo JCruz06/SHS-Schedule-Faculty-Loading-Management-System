@@ -11,7 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState('jestercruz06@gmail.com');
-  const [password, setPassword] = useState('*********');
+  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -21,32 +21,29 @@ export default function LoginPage() {
     }
   }, [user, router]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     
-    if (!email) {
-      setErrorMsg('Please enter a valid administrator email address.');
+    if (!email || !password) {
+      setErrorMsg('Please enter a valid email and password.');
       return;
     }
     
     setSubmitting(true);
     
-    // Artificial mock delay for professional feel
-    setTimeout(() => {
-      try {
-        const success = login(email);
-        if (success) {
-          router.push('/dashboard');
-        } else {
-          setErrorMsg('Authentication failed. Please verify credentials.');
-        }
-      } catch (err) {
-        setErrorMsg('An error occurred during authentication.');
-      } finally {
-        setSubmitting(false);
+    try {
+      const res = await login(email, password);
+      if (res.success) {
+        router.push('/dashboard');
+      } else {
+        setErrorMsg(res.error || 'Authentication failed. Please verify credentials.');
       }
-    }, 820);
+    } catch (err) {
+      setErrorMsg('An error occurred during authentication.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
