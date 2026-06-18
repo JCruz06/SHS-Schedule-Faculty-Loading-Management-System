@@ -4,6 +4,8 @@ import { TeacherLoad, ScheduleEntry } from '@/types';
 
 export async function POST(request: Request) {
   const supabase = await createServerClient();
+  const insertedEntryIds: string[] = [];
+  let deletedEntriesBackup: any[] = [];
   try {
     const body = await request.json();
     const { mode, teacher_id, teacher_load_id } = body;
@@ -13,34 +15,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid mode specified' }, { status: 400 });
     }
 
-    // 1. Delete existing auto-generated entries according to the mode (if not preserving)
+    // 1. Fetch backup of existing auto-generated entries before deleting (if not preserving)
     if (!preserve_existing) {
+      let query = supabase.from('schedule_entries').select('*');
       if (mode === 'all') {
-        const { error: delErr } = await supabase
-          .from('schedule_entries')
-          .delete()
-          .eq('source', 'auto_generated');
-        if (delErr) throw delErr;
+        query = query.eq('source', 'auto_generated');
       } else if (mode === 'teacher') {
         if (!teacher_id) {
           return NextResponse.json({ error: 'Missing teacher_id for teacher mode' }, { status: 400 });
         }
-        const { error: delErr } = await supabase
-          .from('schedule_entries')
-          .delete()
-          .eq('teacher_id', teacher_id)
-          .eq('source', 'auto_generated');
-        if (delErr) throw delErr;
+        query = query.eq('teacher_id', teacher_id).eq('source', 'auto_generated');
       } else if (mode === 'load') {
         if (!teacher_load_id) {
           return NextResponse.json({ error: 'Missing teacher_load_id for load mode' }, { status: 400 });
         }
-        const { error: delErr } = await supabase
-          .from('schedule_entries')
-          .delete()
-          .eq('teacher_load_id', teacher_load_id)
-          .eq('source', 'auto_generated');
-        if (delErr) throw delErr;
+        query = query.eq('teacher_load_id', teacher_load_id).eq('source', 'auto_generated');
+      }
+      const { data: backupData, error: backupErr } = await query;
+      if (backupErr) throw backupErr;
+      deletedEntriesBackup = backupData || [];
+
+      // Perform deletion
+      if (deletedEntriesBackup.length > 0) {
+        if (mode === 'all') {
+          const { error: delErr } = await supabase
+            .from('schedule_entries')
+            .delete()
+            .eq('source', 'auto_generated');
+          if (delErr) throw delErr;
+        } else if (mode === 'teacher') {
+          const { error: delErr } = await supabase
+            .from('schedule_entries')
+            .delete()
+            .eq('teacher_id', teacher_id)
+            .eq('source', 'auto_generated');
+          if (delErr) throw delErr;
+        } else if (mode === 'load') {
+          const { error: delErr } = await supabase
+            .from('schedule_entries')
+            .delete()
+            .eq('teacher_load_id', teacher_load_id)
+            .eq('source', 'auto_generated');
+          if (delErr) throw delErr;
+        }
       }
     }
 
@@ -78,10 +95,13 @@ export async function POST(request: Request) {
     // Filter loads to process
     let loadsToProcess: TeacherLoad[] = [];
     if (mode === 'all') {
-      // mode 'all': status is pending, partially_placed, or not_placed
-      loadsToProcess = (allLoads || []).filter(l => 
-        ['pending', 'partially_placed', 'not_placed', 'out_of_sync'].includes(l.placement_status)
-      );
+      if (!preserve_existing) {
+        loadsToProcess = allLoads || [];
+      } else {
+        loadsToProcess = (allLoads || []).filter(l => 
+          ['pending', 'partially_placed', 'not_placed', 'out_of_sync'].includes(l.placement_status)
+        );
+      }
     } else if (mode === 'teacher') {
       loadsToProcess = (allLoads || []).filter(l => l.teacher_id === teacher_id);
     } else if (mode === 'load') {
@@ -118,11 +138,28 @@ export async function POST(request: Request) {
 
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+    // Helper function for shuffling
+    const shuffle = <T>(array: T[]): T[] => {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+
     // 5. Run auto-placement algorithm
     for (const load of loadsToProcess) {
-      let remaining_hours = preserve_existing
-        ? load.required_hours_per_week - load.placed_hours
-        : load.required_hours_per_week;
+      const { data: currentLoadRow, error: fetchLoadErr } = await supabase
+        .from('teacher_loads')
+        .select('placed_hours')
+        .eq('id', load.id)
+        .single();
+      if (fetchLoadErr) throw fetchLoadErr;
+
+      const currentPlacedHours = currentLoadRow?.placed_hours || 0;
+      let remaining_hours = load.required_hours_per_week - currentPlacedHours;
+
       const section = (sections || []).find(s => s.id === load.section_id);
       const shift = section?.shift || 'Morning';
 
@@ -130,50 +167,94 @@ export async function POST(request: Request) {
       const shiftSlots = (timeSlots || []).filter(s => s.shift === shift && !s.is_recess);
 
       const newAssignments: any[] = [];
+      
+      const { data: currentLoadEntries, error: loadEntriesErr } = await supabase
+        .from('schedule_entries')
+        .select('day')
+        .eq('teacher_load_id', load.id);
+      if (loadEntriesErr) throw loadEntriesErr;
 
-      for (const day of days) {
-        for (const slot of shiftSlots) {
-          if (remaining_hours <= 0) break;
+      const slotsPlacedPerDay = new Map<string, number>();
+      days.forEach(d => slotsPlacedPerDay.set(d, 0));
+      (currentLoadEntries || []).forEach((e: any) => {
+        slotsPlacedPerDay.set(e.day, (slotsPlacedPerDay.get(e.day) || 0) + 1);
+      });
 
-          const teacherKey = `${day}-${slot.id}-${load.teacher_id}`;
-          const sectionKey = `${day}-${slot.id}-${load.section_id}`;
+      let pass = 1;
+      let progressMade = true;
 
-          // If teacher and section are both free
-          if (!teacherBookings.has(teacherKey) && !sectionBookings.has(sectionKey)) {
-            newAssignments.push({
-              teacher_id: load.teacher_id,
-              section_id: load.section_id,
-              subject_id: load.subject_id,
-              time_slot_id: slot.id,
-              day,
-              source: 'auto_generated',
-              teacher_load_id: load.id
-            });
+      // Cycle through weekdays placing at most one period per day per pass.
+      // Allow multiple periods on the same day as a fallback if weekdays have been cycled and hours remain.
+      while (remaining_hours > 0.01 && progressMade) {
+        progressMade = false;
+        const shuffledDays = shuffle(days);
 
-            // Mark as booked
-            teacherBookings.add(teacherKey);
-            sectionBookings.add(sectionKey);
+        for (const day of shuffledDays) {
+          if (remaining_hours <= 0.01) break;
 
-            // Deduct from remaining
-            remaining_hours -= (slot.duration_minutes / 60);
+          const currentSlotsOnDay = slotsPlacedPerDay.get(day) || 0;
+          // In pass P, allow at most P slots per day
+          if (currentSlotsOnDay >= pass) {
+            continue;
+          }
+
+          const shuffledSlots = shuffle(shiftSlots);
+
+          for (const slot of shuffledSlots) {
+            const teacherKey = `${day}-${slot.id}-${load.teacher_id}`;
+            const sectionKey = `${day}-${slot.id}-${load.section_id}`;
+
+            if (!teacherBookings.has(teacherKey) && !sectionBookings.has(sectionKey)) {
+              newAssignments.push({
+                teacher_id: load.teacher_id,
+                section_id: load.section_id,
+                subject_id: load.subject_id,
+                time_slot_id: slot.id,
+                day,
+                source: 'auto_generated',
+                teacher_load_id: load.id
+              });
+
+              teacherBookings.add(teacherKey);
+              sectionBookings.add(sectionKey);
+              slotsPlacedPerDay.set(day, currentSlotsOnDay + 1);
+              remaining_hours -= (slot.duration_minutes / 60);
+
+              progressMade = true;
+              break; // Place at most one slot per day in this pass
+            }
           }
         }
-        if (remaining_hours <= 0) break;
+        pass++;
       }
 
       // Save assignments
       if (newAssignments.length > 0) {
-        const { error: insErr } = await supabase
+        const { data: insertedRows, error: insErr } = await supabase
           .from('schedule_entries')
-          .insert(newAssignments);
+          .insert(newAssignments)
+          .select();
         if (insErr) throw insErr;
+        if (insertedRows) {
+          insertedRows.forEach((row: any) => insertedEntryIds.push(row.id));
+        }
       }
 
-      // Update load status in DB
+      // Verify actual scheduled hours from database
+      const { data: updatedLoadRow, error: checkErr } = await supabase
+        .from('teacher_loads')
+        .select('placed_hours')
+        .eq('id', load.id)
+        .single();
+      if (checkErr) throw checkErr;
+
+      const verifiedHours = updatedLoadRow?.placed_hours || 0;
+
+      // Update load status in DB based on verified hours
       let finalStatus: 'fully_placed' | 'partially_placed' | 'not_placed' = 'not_placed';
-      if (remaining_hours <= 0) {
+      if (Math.abs(verifiedHours - load.required_hours_per_week) < 0.01) {
         finalStatus = 'fully_placed';
-      } else if (newAssignments.length > 0) {
+      } else if (verifiedHours > 0) {
         finalStatus = 'partially_placed';
       }
 
@@ -230,6 +311,32 @@ export async function POST(request: Request) {
 
   } catch (err: any) {
     console.error('Error during auto-scheduling:', err);
+    try {
+      if (insertedEntryIds.length > 0) {
+        await supabase
+          .from('schedule_entries')
+          .delete()
+          .in('id', insertedEntryIds);
+      }
+      if (deletedEntriesBackup.length > 0) {
+        const cleanBackup = deletedEntriesBackup.map(e => ({
+          id: e.id,
+          teacher_id: e.teacher_id,
+          section_id: e.section_id,
+          subject_id: e.subject_id,
+          time_slot_id: e.time_slot_id,
+          day: e.day,
+          source: e.source,
+          teacher_load_id: e.teacher_load_id,
+          created_at: e.created_at
+        }));
+        await supabase
+          .from('schedule_entries')
+          .insert(cleanBackup);
+      }
+    } catch (rollbackErr) {
+      console.error('Rollback failed:', rollbackErr);
+    }
     return NextResponse.json({ error: err.message || 'Auto-generation failed' }, { status: 500 });
   }
 }

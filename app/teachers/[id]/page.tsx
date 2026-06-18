@@ -14,7 +14,9 @@ import {
   Award,
   Clock,
   Layers,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  Bot
 } from 'lucide-react';
 import Link from 'next/link';
 import OutOfSyncPanel from '../../../components/schedule/OutOfSyncPanel';
@@ -36,6 +38,12 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [regenerating, setRegenerating] = useState(false);
+  const [showSpecWarning, setShowSpecWarning] = useState(false);
+  const [pendingLoadPayload, setPendingLoadPayload] = useState<{
+    subject_id: string;
+    section_id: string;
+  } | null>(null);
+  const [showGenDropdown, setShowGenDropdown] = useState(false);
 
   // Retrieve this teacher's details
   const teacher = teachers.find(t => t.id === id);
@@ -68,10 +76,8 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
            (teachSpec.includes('humss') && subReq.includes('humss'));
   };
 
-  // Filter subjects to teacher's specialization
-  const eligibleSubjects = teacher
-    ? subjects.filter(sub => checkSpecializationMatch(teacher.specialization, sub.required_specialization))
-    : [];
+  // Sort all subjects alphabetically by name
+  const sortedSubjects = [...subjects].sort((a, b) => a.name.localeCompare(b.name));
 
   // Filter sections to the selected subject's strand
   const selectedSubject = subjects.find(sub => sub.id === selectedSubjectId);
@@ -80,7 +86,7 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
     : [];
 
   const handleOpenAddModal = () => {
-    setSelectedSubjectId(eligibleSubjects.length > 0 ? eligibleSubjects[0].id : '');
+    setSelectedSubjectId(sortedSubjects.length > 0 ? sortedSubjects[0].id : '');
     setSelectedSectionId('');
     setModalOpen(true);
   };
@@ -106,7 +112,17 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
 
   const handleSaveLoad = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSubjectId || !selectedSectionId) return;
+    if (!selectedSubjectId || !selectedSectionId || !teacher) return;
+
+    const subject = subjects.find(s => s.id === selectedSubjectId);
+    if (subject && !checkSpecializationMatch(teacher.specialization, subject.required_specialization)) {
+      setPendingLoadPayload({
+        subject_id: selectedSubjectId,
+        section_id: selectedSectionId
+      });
+      setShowSpecWarning(true);
+      return;
+    }
 
     await addTeacherLoad({
       teacher_id: id,
@@ -116,17 +132,30 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
     setModalOpen(false);
   };
 
+  const confirmSaveLoad = async () => {
+    if (pendingLoadPayload) {
+      await addTeacherLoad({
+        teacher_id: id,
+        subject_id: pendingLoadPayload.subject_id,
+        section_id: pendingLoadPayload.section_id
+      });
+    }
+    setShowSpecWarning(false);
+    setPendingLoadPayload(null);
+    setModalOpen(false);
+  };
+
   const handleDeleteLoad = (loadId: string, subjectName: string, sectionName: string) => {
     if (confirm(`Are you sure you want to remove the load for subject "${subjectName}" and section "${sectionName}"? This will clear its assigned schedule entries.`)) {
       deleteTeacherLoad(loadId);
     }
   };
 
-  const handleRegenerateSchedule = async () => {
+  const handleRegenerateSchedule = async (preserveExisting: boolean) => {
     if (!teacher) return;
     setRegenerating(true);
     try {
-      await regenerateTeacherSchedule(teacher.id);
+      await regenerateTeacherSchedule(teacher.id, preserveExisting);
     } finally {
       setRegenerating(false);
     }
@@ -183,14 +212,62 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
             </h2>
           </div>
           
-          <button
-            onClick={handleRegenerateSchedule}
-            disabled={regenerating || currentLoads.length === 0}
-            className="px-4 py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white font-semibold rounded-lg text-sm shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
-            <span>{regenerating ? 'Regenerating...' : "Regenerate This Teacher's Schedule"}</span>
-          </button>
+          <div className="relative shrink-0">
+            <div className="inline-flex rounded-lg shadow-sm">
+              <button
+                onClick={() => handleRegenerateSchedule(true)}
+                disabled={regenerating || currentLoads.length === 0}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-l-lg text-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer transition-colors"
+                title="Only schedule remaining slots without wiping existing ones"
+              >
+                <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+                <span>Fill Remaining Only</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGenDropdown(!showGenDropdown)}
+                disabled={regenerating || currentLoads.length === 0}
+                className="px-2.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-r-lg border-l border-indigo-500 text-sm flex items-center justify-center disabled:opacity-50 cursor-pointer transition-colors"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </div>
+
+            {showGenDropdown && (
+              <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-white border border-slate-200 shadow-lg py-1.5 z-20 animate-in fade-in slide-in-from-top-1 duration-150 text-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGenDropdown(false);
+                    handleRegenerateSchedule(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-slate-705 hover:bg-slate-50 font-semibold flex items-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <div>
+                    <div className="font-bold">Fill Remaining Only</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Place missing hours only</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGenDropdown(false);
+                    if (confirm(`Are you sure you want to regenerate all schedules for ${teacher.name}? This will wipe previous auto-generated entries for this teacher. Manual entries remain safe.`)) {
+                      handleRegenerateSchedule(false);
+                    }
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-xs text-red-700 hover:bg-red-50/50 font-semibold flex items-center gap-2 border-t border-slate-100 cursor-pointer"
+                >
+                  <Bot className="w-3.5 h-3.5 text-red-505 shrink-0" />
+                  <div>
+                    <div className="font-bold text-red-600">Regenerate Everything</div>
+                    <div className="text-[10px] text-slate-405 font-normal">Wipe auto & rebuild fresh</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Teacher Details Card */}
@@ -357,11 +434,13 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
           )}
 
           {/* Table Footer total sum */}
-          <div className="p-5 bg-slate-50 border-t border-slate-150 flex items-center justify-between text-slate-800 text-xs font-bold">
-            <span>Total Defined Weekly Load:</span>
-            <span className="font-mono text-sm px-3 py-1 bg-white border border-slate-200 rounded-md">
-              {totalWeeklyLoad} Hours / Week
-            </span>
+          <div className="p-5 bg-slate-50 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-slate-800 text-xs font-bold">
+            <div className="flex items-center gap-2">
+              <span>Total Defined Weekly Load:</span>
+              <span className="font-mono text-sm px-3 py-1 bg-white border border-slate-200 rounded-md">
+                {totalWeeklyLoad} Hours / Week
+              </span>
+            </div>
           </div>
         </div>
 
@@ -383,12 +462,12 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
                 </button>
               </div>
 
-              {eligibleSubjects.length === 0 ? (
+              {sortedSubjects.length === 0 ? (
                 <div className="p-6 text-center space-y-3">
                   <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
-                  <h4 className="font-bold text-slate-800 text-sm">No compatible subjects found</h4>
+                  <h4 className="font-bold text-slate-800 text-sm">No subjects found</h4>
                   <p className="text-xs text-slate-505 leading-relaxed">
-                    There are no curricular subjects matching this teacher's specialization: <strong>{teacher.specialization}</strong>.
+                    There are no curricular subjects defined in the system.
                   </p>
                   <div className="pt-4 border-t border-slate-200">
                     <button
@@ -403,19 +482,22 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
               ) : (
                 <form onSubmit={handleSaveLoad} className="p-6 space-y-4">
                   <div>
-                    <label className="block text-2xs font-bold text-slate-705 uppercase tracking-wider mb-1.5">
-                      Subject Course (Specialization-Matched) <span className="text-red-500">*</span>
+                    <label className="block text-2xs font-bold text-slate-750 uppercase tracking-wider mb-1.5">
+                      Subject Course <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={selectedSubjectId}
                       onChange={(e) => handleSubjectChange(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
                     >
-                      {eligibleSubjects.map(sub => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name} (Req: {sub.required_specialization})
-                        </option>
-                      ))}
+                      {sortedSubjects.map(sub => {
+                        const isMatch = teacher ? checkSpecializationMatch(teacher.specialization, sub.required_specialization) : true;
+                        return (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name} (Req: {sub.required_specialization}){!isMatch ? ' ⚠️ Mismatch' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -467,6 +549,49 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        )}
+
+        {showSpecWarning && pendingLoadPayload && (
+          <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-amber-50 rounded-xl text-amber-600 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-bold text-slate-900">Specialization Mismatch</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    The subject <strong className="text-slate-800">{subjects.find(s => s.id === pendingLoadPayload.subject_id)?.name}</strong> requires <strong className="text-slate-800">{subjects.find(s => s.id === pendingLoadPayload.subject_id)?.required_specialization}</strong> specialization.
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    This does not match the teacher's specialization of <strong className="text-slate-800">{teacher.specialization}</strong>.
+                  </p>
+                  <p className="text-xs text-slate-505 leading-relaxed">
+                    Do you want to assign this teaching load anyway?
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSpecWarning(false);
+                    setPendingLoadPayload(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSaveLoad}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                >
+                  Assign Anyway
+                </button>
+              </div>
             </div>
           </div>
         )}

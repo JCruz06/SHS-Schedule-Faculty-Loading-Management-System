@@ -40,8 +40,8 @@ interface AppContextType {
 
   addTeacherLoad: (load: { teacher_id: string; subject_id: string; section_id: string }) => Promise<void>;
   deleteTeacherLoad: (id: string) => Promise<void>;
-  regenerateTeacherSchedule: (teacherId: string) => Promise<any>;
-  regenerateAllSchedules: () => Promise<any>;
+  regenerateTeacherSchedule: (teacherId: string, preserveExisting?: boolean) => Promise<any>;
+  regenerateAllSchedules: (preserveExisting?: boolean) => Promise<any>;
 
   saveScheduleEntry: (entry: Omit<ScheduleEntry, 'id'>) => Promise<{ success: boolean; error?: string }>;
   deleteScheduleEntryById: (id: string) => Promise<void>;
@@ -484,12 +484,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const regenerateTeacherSchedule = async (teacherId: string) => {
+  const regenerateTeacherSchedule = async (teacherId: string, preserveExisting: boolean = false) => {
     try {
       const res = await fetch('/api/schedule/auto-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'teacher', teacher_id: teacherId }),
+        body: JSON.stringify({
+          mode: 'teacher',
+          teacher_id: teacherId,
+          preserve_existing: preserveExisting
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -504,12 +508,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const regenerateAllSchedules = async () => {
+  const regenerateAllSchedules = async (preserveExisting: boolean = false) => {
     try {
       const res = await fetch('/api/schedule/auto-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'all' }),
+        body: JSON.stringify({
+          mode: 'all',
+          preserve_existing: preserveExisting
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -534,11 +541,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (res.ok) {
-        // Reload all schedules to keep state completely consistent with database
-        const schedRes = await fetch('/api/schedule');
-        if (schedRes.ok) {
-          setScheduleEntries(await schedRes.json());
-        }
+        await loadAllData();
         showToast('Schedule cell saved successfully.');
         return { success: true };
       } else {
@@ -557,10 +560,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'DELETE',
       });
       if (res.ok) {
-        setScheduleEntries(prev => prev.filter(e => e.id !== id));
-        // Refresh teacher loads to update placed_hours
-        const tlRes = await fetch('/api/teacher-loads');
-        if (tlRes.ok) setTeacherLoads(await tlRes.json());
+        await loadAllData();
         showToast('Schedule cell cleared.', 'warning');
       } else {
         const data = await res.json();
@@ -578,15 +578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'DELETE',
       });
       if (res.ok) {
-        setScheduleEntries(prev => prev.filter(entry => {
-          const matchSlot = entry.day === day && entry.time_slot_id === timeSlotId;
-          if (!matchSlot) return true;
-          if (viewBy === 'teacher') {
-            return entry.teacher_id !== criteriaId;
-          } else {
-            return entry.section_id !== criteriaId;
-          }
-        }));
+        await loadAllData();
         showToast('Scheduled entry cleared from timetable.', 'warning');
       } else {
         const data = await res.json();
@@ -603,7 +595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         method: 'DELETE',
       });
       if (res.ok) {
-        setScheduleEntries([]);
+        await loadAllData();
         showToast('All timetable schedules have been wiped.', 'error');
       } else {
         const data = await res.json();

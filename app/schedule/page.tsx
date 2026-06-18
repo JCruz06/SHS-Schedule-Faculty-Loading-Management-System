@@ -16,9 +16,10 @@ import {
   ChevronRight,
   Info,
   Bot,
-  RefreshCw
+  RefreshCw,
+  ChevronDown
 } from 'lucide-react';
-import { ScheduleEntry, TimeSlot, Teacher, Section, Subject, GenerationResult } from '../../types';
+import { ScheduleEntry, TimeSlot, Teacher, Section, Subject, GenerationResult, TeacherLoad } from '../../types';
 import GenerationResultsModal from '../../components/schedule/GenerationResultsModal';
 import { formatTime24To12 } from '../../lib/helpers';
 
@@ -30,6 +31,7 @@ export default function ScheduleBuilderPage() {
     subjects,
     timeSlots,
     scheduleEntries,
+    teacherLoads,
     saveScheduleEntry,
     clearScheduleEntry,
     conflicts,
@@ -42,10 +44,26 @@ export default function ScheduleBuilderPage() {
   const [lastGenTime, setLastGenTime] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  const handleAutoGenerateAll = async () => {
+  // Overload Warning modal states
+  const [showOverloadModal, setShowOverloadModal] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<{
+    teacher_id: string;
+    section_id: string;
+    subject_id: string;
+    time_slot_id: string;
+    day: string;
+    source: 'manual';
+    teacher_load_id: string | null;
+  } | null>(null);
+  const [overloadLoadDetails, setOverloadLoadDetails] = useState<TeacherLoad | null>(null);
+  
+  // Dropdown status for scheduling engine split button
+  const [showGenDropdown, setShowGenDropdown] = useState(false);
+
+  const handleAutoGenerateAll = async (preserveExisting: boolean = false) => {
     setGenerating(true);
     try {
-      const res = await regenerateAllSchedules();
+      const res = await regenerateAllSchedules(preserveExisting);
       if (res) {
         setGenerationResults(res);
         setLastGenTime(new Date().toLocaleTimeString());
@@ -137,16 +155,43 @@ export default function ScheduleBuilderPage() {
     e.preventDefault();
     if (!formTeacherId || !formSubjectId || !formSectionId || !selectedSlotId) return;
 
-    saveScheduleEntry({
+    const matchingLoad = teacherLoads.find(
+      l => l.teacher_id === formTeacherId &&
+           l.subject_id === formSubjectId &&
+           l.section_id === formSectionId
+    );
+
+    const payload = {
       teacher_id: formTeacherId,
       section_id: formSectionId,
       subject_id: formSubjectId,
       time_slot_id: selectedSlotId,
       day: selectedDay,
-      source: 'manual',
-      teacher_load_id: null,
-    });
+      source: 'manual' as const,
+      teacher_load_id: matchingLoad ? matchingLoad.id : null,
+    };
 
+    const existingEntry = findEntry(selectedDay, selectedSlotId);
+    const isSameLoad = existingEntry && matchingLoad && existingEntry.teacher_load_id === matchingLoad.id;
+
+    if (matchingLoad && matchingLoad.placement_status === 'fully_placed' && !isSameLoad) {
+      setPendingSaveData(payload);
+      setOverloadLoadDetails(matchingLoad);
+      setShowOverloadModal(true);
+      return;
+    }
+
+    saveScheduleEntry(payload);
+    setSidePanelOpen(false);
+  };
+
+  const confirmSaveEntry = () => {
+    if (pendingSaveData) {
+      saveScheduleEntry(pendingSaveData);
+    }
+    setShowOverloadModal(false);
+    setPendingSaveData(null);
+    setOverloadLoadDetails(null);
     setSidePanelOpen(false);
   };
 
@@ -220,14 +265,62 @@ export default function ScheduleBuilderPage() {
             )}
           </div>
 
-          <button
-            onClick={handleAutoGenerateAll}
-            disabled={generating}
-            className="px-4.5 py-2.5 bg-blue-600 hover:bg-blue-750 text-white font-semibold rounded-lg text-xs shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer self-start sm:self-center shrink-0 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-            <span>{generating ? 'Generating...' : 'Auto-Generate ALL Schedules'}</span>
-          </button>
+          <div className="relative shrink-0 self-start sm:self-center">
+            <div className="inline-flex rounded-lg shadow-sm">
+              <button
+                onClick={() => handleAutoGenerateAll(true)}
+                disabled={generating}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-l-lg text-xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer transition-colors"
+                title="Only schedule remaining slots without wiping existing ones"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
+                <span>Fill Remaining Only</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGenDropdown(!showGenDropdown)}
+                disabled={generating}
+                className="px-2.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-r-lg border-l border-blue-500 text-xs flex items-center justify-center disabled:opacity-50 cursor-pointer transition-colors animate-in"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </div>
+
+            {showGenDropdown && (
+              <div className="absolute right-0 mt-1.5 w-56 rounded-xl bg-white border border-slate-200 shadow-lg py-1.5 z-20 animate-in fade-in slide-in-from-top-1 duration-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGenDropdown(false);
+                    handleAutoGenerateAll(true);
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <div>
+                    <div className="font-bold">Fill Remaining Only</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Place missing hours only</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGenDropdown(false);
+                    if (confirm("Are you sure you want to regenerate everything? This will wipe all auto-generated schedule entries and rebuild from scratch. Manual entries will remain safe.")) {
+                      handleAutoGenerateAll(false);
+                    }
+                  }}
+                  className="w-full text-left px-4 py-2 text-xs text-red-700 hover:bg-red-50/50 font-semibold flex items-center gap-2 border-t border-slate-100 cursor-pointer"
+                >
+                  <Bot className="w-3.5 h-3.5 text-red-505 shrink-0" />
+                  <div>
+                    <div className="font-bold text-red-600">Regenerate Everything</div>
+                    <div className="text-[10px] text-slate-405 font-normal">Wipe auto & rebuild fresh</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Filter Control Bar Header */}
@@ -601,6 +694,47 @@ export default function ScheduleBuilderPage() {
         results={generationResults}
         onRegenerateAll={handleAutoGenerateAll}
       />
+
+      {showOverloadModal && overloadLoadDetails && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-50 rounded-xl text-amber-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-base font-bold text-slate-900">Teaching Load Overload Warning</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  The teaching load for <strong className="text-slate-800">{teachers.find(t => t.id === overloadLoadDetails.teacher_id)?.name}</strong> on <strong className="text-slate-800">{subjects.find(s => s.id === overloadLoadDetails.subject_id)?.name}</strong> in <strong className="text-slate-800">{sections.find(sec => sec.id === overloadLoadDetails.section_id)?.name}</strong> is already <span className="text-amber-600 font-semibold">fully placed</span> ({overloadLoadDetails.placed_hours}/{overloadLoadDetails.required_hours_per_week} hrs).
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Adding this slot will exceed the defined required hours. Would you like to assign this block anyway?
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOverloadModal(false);
+                  setPendingSaveData(null);
+                  setOverloadLoadDetails(null);
+                }}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmSaveEntry}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors cursor-pointer"
+              >
+                Add Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

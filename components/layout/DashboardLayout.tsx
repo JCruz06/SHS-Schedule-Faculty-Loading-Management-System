@@ -28,7 +28,7 @@ interface DashboardLayoutProps {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, logout, conflicts, reseedDatabase, isLoading } = useApp();
+  const { user, logout, conflicts, isLoading } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -144,22 +144,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           })}
         </nav>
 
-        {/* System seed reset button */}
-        <div className="px-4 py-3 border-t border-white/10 bg-white/2">
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Re-seed database to pristine mock records? This overrides current changes.')) {
-                reseedDatabase();
-              }
-            }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-md text-[10px] text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all font-mono uppercase tracking-wider font-bold"
-            title="Restore original DepEd SHS placeholder datasets"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset Demo Seeds</span>
-          </button>
-        </div>
+
 
         {/* User Card & Logout button at bottom */}
         <div className="p-4 border-t border-white/10 flex items-center justify-between gap-3 bg-white/5">
@@ -260,22 +245,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           })}
         </nav>
 
-        {/* Setup Reset */}
-        <div className="px-4 py-3 border-t border-white/10 bg-white/2">
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Re-seed database to pristine mock records?')) {
-                reseedDatabase();
-                setMobileMenuOpen(false);
-              }
-            }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-md text-[10px] text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all font-mono uppercase tracking-wider font-bold"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset Demo Seeds</span>
-          </button>
-        </div>
+
 
         {/* User Card at bottom */}
         <div className="p-4 border-t border-white/10 flex items-center justify-between gap-3 bg-white/5">

@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { login, user, isLoading } = useApp();
   const router = useRouter();
 
-  const [email, setEmail] = useState('jestercruz06@gmail.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -123,11 +123,6 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-10 pr-4 py-3 bg-slate-900/40 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-medium"
                 />
-              </div>
-              <div className="mt-2.5 text-right">
-                <p className="text-3xs text-slate-600 font-mono italic">
-                  * Pre-filled Demo Credentials Configured.
-                </p>
               </div>
             </div>
 
