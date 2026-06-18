@@ -207,7 +207,13 @@ export default function ConflictValidationPage() {
 
                         {/* Quick fix redirect link */}
                         <button
-                          onClick={() => router.push('/schedule')}
+                          onClick={() => {
+                            if (conflict.type === 'Out of Sync Load' && conflict.affectedTeacherId) {
+                              router.push(`/teachers/${conflict.affectedTeacherId}`);
+                            } else {
+                              router.push('/schedule');
+                            }
+                          }}
                           className="px-3.5 py-2 hover:bg-slate-50 text-slate-800 border border-slate-200 bg-white rounded-lg text-xs font-semibold shadow-3xs flex items-center justify-center gap-1.5 self-start md:self-center cursor-pointer transition-colors"
                         >
                           <span>Resolve Block</span>

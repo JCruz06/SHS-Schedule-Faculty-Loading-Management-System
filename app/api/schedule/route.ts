@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       // Update it
       const { data, error } = await supabase
         .from('schedule_entries')
-        .update({ teacher_id, subject_id })
+        .update({ teacher_id, subject_id, source: 'manual', teacher_load_id: null })
         .eq('id', existing.id)
         .select()
         .single();
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       // Insert new
       const { data, error } = await supabase
         .from('schedule_entries')
-        .insert([{ teacher_id, section_id, subject_id, time_slot_id, day }])
+        .insert([{ teacher_id, section_id, subject_id, time_slot_id, day, source: 'manual', teacher_load_id: null }])
         .select()
         .single();
 
@@ -87,6 +87,33 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const supabase = await createServerClient();
   const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+
+  if (id) {
+    const { error } = await supabase
+      .from('schedule_entries')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  const teacher_load_id = searchParams.get('teacher_load_id');
+  if (teacher_load_id) {
+    const { error } = await supabase
+      .from('schedule_entries')
+      .delete()
+      .eq('teacher_load_id', teacher_load_id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
   const clearAll = searchParams.get('clearAll') === 'true';
   const day = searchParams.get('day');
   const time_slot_id = searchParams.get('time_slot_id');

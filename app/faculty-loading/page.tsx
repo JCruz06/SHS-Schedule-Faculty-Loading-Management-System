@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function FacultyLoadingSummaryPage() {
-  const { teachers, sections, subjects, timeSlots, scheduleEntries } = useApp();
+  const { teachers, sections, subjects, timeSlots, scheduleEntries, teacherLoads } = useApp();
 
   // Filters state
   const [schoolYear, setSchoolYear] = useState('2026-2027');
@@ -127,6 +127,7 @@ export default function FacultyLoadingSummaryPage() {
                   <th className="py-4 px-3 text-center">Teach Hrs</th>
                   <th className="py-4 px-3 text-center">Anc Hrs</th>
                   <th className="py-4 px-5 text-center">Total Load</th>
+                  <th className="py-4 px-4 text-center">Required vs Placed Hours</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -156,7 +157,16 @@ export default function FacultyLoadingSummaryPage() {
                     >
                       {/* Name / Specialty */}
                       <td className="py-4.5 px-5 font-bold text-slate-905 border-r border-slate-100 max-w-xs shrink-0">
-                        <div>{summary.teacherName}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span>{summary.teacherName}</span>
+                          {teacherLoads.filter(l => l.teacher_id === summary.teacherId).some(l => 
+                            l.placement_status === 'out_of_sync' || l.placement_status === 'partially_placed'
+                          ) && (
+                            <span title="Has Out of Sync or Partially Placed loads">
+                              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                            </span>
+                          )}
+                        </div>
                         <div className="text-3xs font-semibold text-slate-400 mt-0.5">{summary.specialization}</div>
                       </td>
 
@@ -221,6 +231,34 @@ export default function FacultyLoadingSummaryPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 border rounded-md text-xs font-extrabold font-mono print:font-bold ${badgeColor}`}>
                           {summary.totalHoursPerWeek.toFixed(1)} Hours
                         </span>
+                      </td>
+
+                      {/* Required vs Placed Hours progress */}
+                      <td className="py-4.5 px-4 text-center border-l border-slate-100">
+                        {(() => {
+                          const tLoads = teacherLoads.filter(l => l.teacher_id === summary.teacherId);
+                          const totalRequired = tLoads.reduce((sum, l) => sum + (l.required_hours_per_week || 0), 0);
+                          const totalPlaced = tLoads.reduce((sum, l) => sum + (l.placed_hours || 0), 0);
+
+                          return totalRequired > 0 ? (
+                            <div className="space-y-1 inline-block text-left min-w-28 font-semibold">
+                              <div className="flex justify-between items-center text-3xs text-slate-600 font-mono">
+                                <span>{totalPlaced.toFixed(1)} / {totalRequired} hrs</span>
+                                {totalPlaced < totalRequired && (
+                                  <span className="text-amber-500 text-[10px] font-extrabold uppercase animate-pulse">Under</span>
+                                )}
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${totalPlaced >= totalRequired ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${Math.min((totalPlaced / totalRequired) * 100, 100)}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-2xs">No loads defined</span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );

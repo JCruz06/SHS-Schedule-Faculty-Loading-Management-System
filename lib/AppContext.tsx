@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Teacher, Strand, Section, Subject, TimeSlot, ScheduleEntry, ConflictResult } from '../types';
+import { Teacher, Strand, Section, Subject, TimeSlot, ScheduleEntry, ConflictResult, TeacherLoad } from '../types';
 import { runConflictChecks } from './validations';
 import { createClient } from './supabase';
 
@@ -13,6 +13,7 @@ interface AppContextType {
   subjects: Subject[];
   timeSlots: TimeSlot[];
   scheduleEntries: ScheduleEntry[];
+  teacherLoads: TeacherLoad[];
   conflicts: ConflictResult[];
   
   // Auth state
@@ -37,10 +38,17 @@ interface AppContextType {
   updateSubject: (id: string, subject: Partial<Subject>) => Promise<void>;
   deleteSubject: (id: string) => Promise<void>;
 
+  addTeacherLoad: (load: { teacher_id: string; subject_id: string; section_id: string }) => Promise<void>;
+  deleteTeacherLoad: (id: string) => Promise<void>;
+  regenerateTeacherSchedule: (teacherId: string) => Promise<any>;
+  regenerateAllSchedules: () => Promise<any>;
+
   saveScheduleEntry: (entry: Omit<ScheduleEntry, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  deleteScheduleEntryById: (id: string) => Promise<void>;
   clearScheduleEntry: (day: string, timeSlotId: string, criteriaId: string, viewBy: 'teacher' | 'section') => Promise<void>;
   clearAllSchedules: () => Promise<void>;
   reseedDatabase: () => Promise<void>;
+  refreshPortalData: () => Promise<void>;
 
   isLoading: boolean;
 
@@ -62,6 +70,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
+  const [teacherLoads, setTeacherLoads] = useState<TeacherLoad[]>([]);
   const [conflicts, setConflicts] = useState<ConflictResult[]>([]);
   
   const [user, setUser] = useState<{ email: string; name: string } | null>(null);
@@ -90,7 +99,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sectionsRes,
         subjectsRes,
         slotsRes,
-        schedulesRes
+        schedulesRes,
+        teacherLoadsRes
       ] = await Promise.all([
         fetch('/api/teachers'),
         fetch('/api/strands'),
@@ -98,6 +108,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch('/api/subjects'),
         fetch('/api/time-slots'),
         fetch('/api/schedule'),
+        fetch('/api/teacher-loads'),
       ]);
 
       if (teachersRes.ok) setTeachers(await teachersRes.json());
@@ -106,6 +117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (subjectsRes.ok) setSubjects(await subjectsRes.json());
       if (slotsRes.ok) setTimeSlots(await slotsRes.json());
       if (schedulesRes.ok) setScheduleEntries(await schedulesRes.json());
+      if (teacherLoadsRes.ok) setTeacherLoads(await teacherLoadsRes.json());
     } catch (err) {
       console.error('Failed to load portal data:', err);
       showToast('Error syncing with backend database.', 'error');
@@ -164,9 +176,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subjects,
       timeSlots,
       scheduleEntries,
+      teacherLoads,
     });
     setConflicts(conflictResults);
-  }, [teachers, strands, sections, subjects, timeSlots, scheduleEntries, isLoading]);
+  }, [teachers, strands, sections, subjects, timeSlots, scheduleEntries, teacherLoads, isLoading]);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -433,6 +446,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const addTeacherLoad = async (load: { teacher_id: string; subject_id: string; section_id: string }) => {
+    try {
+      const res = await fetch('/api/teacher-loads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(load),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTeacherLoads(prev => [...prev, data]);
+        showToast('Teaching load added successfully.');
+      } else {
+        showToast(data.error || 'Failed to add teaching load.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
+  };
+
+  const deleteTeacherLoad = async (id: string) => {
+    try {
+      const res = await fetch(`/api/teacher-loads/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setTeacherLoads(prev => prev.filter(t => t.id !== id));
+        // Remove locally deleted schedule entries linked to this teacher load
+        setScheduleEntries(prev => prev.filter(s => s.teacher_load_id !== id));
+        showToast('Teaching load and associated schedules deleted.', 'warning');
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to delete teaching load.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
+  };
+
+  const regenerateTeacherSchedule = async (teacherId: string) => {
+    try {
+      const res = await fetch('/api/schedule/auto-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'teacher', teacher_id: teacherId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await loadAllData();
+        showToast('Schedule regenerated for teacher.');
+        return data;
+      } else {
+        showToast(data.error || 'Failed to regenerate schedule.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
+  };
+
+  const regenerateAllSchedules = async () => {
+    try {
+      const res = await fetch('/api/schedule/auto-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'all' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await loadAllData();
+        showToast('All schedules auto-generated successfully.');
+        return data;
+      } else {
+        showToast(data.error || 'Failed to generate schedules.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
+  };
+
+
   const saveScheduleEntry = async (entry: Omit<ScheduleEntry, 'id'>): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch('/api/schedule', {
@@ -458,6 +550,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: err.message };
     }
   };
+
+  const deleteScheduleEntryById = async (id: string) => {
+    try {
+      const res = await fetch(`/api/schedule?id=${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setScheduleEntries(prev => prev.filter(e => e.id !== id));
+        // Refresh teacher loads to update placed_hours
+        const tlRes = await fetch('/api/teacher-loads');
+        if (tlRes.ok) setTeacherLoads(await tlRes.json());
+        showToast('Schedule cell cleared.', 'warning');
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to clear schedule cell.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
+  };
+
 
   const clearScheduleEntry = async (day: string, timeSlotId: string, criteriaId: string, viewBy: 'teacher' | 'section') => {
     try {
@@ -619,6 +732,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subjects,
       timeSlots,
       scheduleEntries,
+      teacherLoads,
       conflicts,
       user,
       login,
@@ -638,10 +752,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addSubject,
       updateSubject,
       deleteSubject,
+      addTeacherLoad,
+      deleteTeacherLoad,
+      regenerateTeacherSchedule,
+      regenerateAllSchedules,
       saveScheduleEntry,
+      deleteScheduleEntryById,
       clearScheduleEntry,
       clearAllSchedules,
       reseedDatabase,
+      refreshPortalData: loadAllData,
       isLoading,
     }}>
       {children}

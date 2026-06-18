@@ -13,16 +13,22 @@ import {
   BookMarked,
   Layers,
   Award,
-  Clock
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { Subject } from '../../types';
 
 export default function SubjectsPage() {
-  const { subjects, strands, addSubject, updateSubject, deleteSubject, teachers } = useApp();
+  const { subjects, strands, addSubject, updateSubject, deleteSubject, teachers, teacherLoads, refreshPortalData } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+
+  // Warning Modal States
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [affectedLoads, setAffectedLoads] = useState<any[]>([]);
+  const [pendingPayload, setPendingPayload] = useState<any>(null);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -61,6 +67,15 @@ export default function SubjectsPage() {
     };
 
     if (editingSubject) {
+      if (Number(hours) !== editingSubject.hours_per_week) {
+        const loads = teacherLoads.filter(l => l.subject_id === editingSubject.id);
+        if (loads.length > 0) {
+          setAffectedLoads(loads);
+          setPendingPayload(payload);
+          setShowWarningModal(true);
+          return;
+        }
+      }
       updateSubject(editingSubject.id, payload);
     } else {
       addSubject(payload);
@@ -324,6 +339,77 @@ export default function SubjectsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Out of Sync Warning Modal */}
+        {showWarningModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 overflow-hidden shadow-2xl p-6 space-y-4">
+              <div className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="w-6 h-6 animate-bounce" />
+                <h3 className="font-bold text-slate-905 text-sm">Curricular Hours Modification</h3>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                This subject is currently assigned to <strong>{affectedLoads.length}</strong> active teacher workloads. 
+                Changing weekly hours from <strong>{editingSubject?.hours_per_week}h</strong> to <strong>{pendingPayload?.hours_per_week}h</strong> will mark these workloads as <strong>'Out of Sync'</strong> and require manual adjustments.
+              </p>
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Affected Faculty & Sections:</span>
+                <ul className="text-3xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto space-y-1.5">
+                  {affectedLoads.map(load => (
+                    <li key={load.id} className="flex items-center gap-1.5 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      <span>{load.teacher?.name || 'Unknown Faculty'} &rarr; {load.section?.name || 'Unknown Section'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWarningModal(false);
+                    setPendingPayload(null);
+                    setAffectedLoads([]);
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (editingSubject && pendingPayload) {
+                      // 1. Update the subject
+                      await updateSubject(editingSubject.id, pendingPayload);
+                      // 2. Update affected teacher loads
+                      await Promise.all(
+                        affectedLoads.map(async (load) => {
+                          await fetch(`/api/teacher-loads/${load.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              required_hours_per_week: pendingPayload.hours_per_week,
+                              placement_status: 'out_of_sync'
+                            })
+                          });
+                        })
+                      );
+                      // 3. Sync client state
+                      await refreshPortalData();
+                    }
+                    setShowWarningModal(false);
+                    setPendingPayload(null);
+                    setAffectedLoads([]);
+                    setModalOpen(false);
+                  }}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shadow-xs cursor-pointer"
+                >
+                  Confirm Change
+                </button>
+              </div>
             </div>
           </div>
         )}

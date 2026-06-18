@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useApp } from '../../lib/AppContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import {
@@ -183,7 +184,9 @@ export default function TeachersPage() {
                       <tr key={teacher.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-slate-50/50 transition-colors`}>
                         {/* Name Block */}
                         <td className="py-4.5 px-6 font-semibold text-slate-900 border-r border-slate-100">
-                          {teacher.name}
+                          <Link href={`/teachers/${teacher.id}`} className="text-blue-600 hover:text-blue-800 hover:underline">
+                            {teacher.name}
+                          </Link>
                         </td>
                         
                         {/* Specialization */}
@@ -232,6 +235,13 @@ export default function TeachersPage() {
                         {/* Action buttons */}
                         <td className="py-4.5 px-6 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/teachers/${teacher.id}`}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                              title="Manage teaching load"
+                            >
+                              <BookOpen className="w-4 h-4" />
+                            </Link>
                             <button
                               onClick={() => openEditModal(teacher)}
                               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -241,7 +251,7 @@ export default function TeachersPage() {
                             </button>
                             <button
                               onClick={() => handleDelete(teacher.id, teacher.name)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-red-650 hover:bg-red-50 rounded transition-colors"
                               title="Remove teacher from roster"
                             >
                               <Trash2 className="w-4 h-4" />

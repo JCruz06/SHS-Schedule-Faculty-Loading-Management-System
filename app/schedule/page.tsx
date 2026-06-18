@@ -14,9 +14,12 @@ import {
   UserSquare,
   BookmarkCheck,
   ChevronRight,
-  Info
+  Info,
+  Bot,
+  RefreshCw
 } from 'lucide-react';
-import { ScheduleEntry, TimeSlot, Teacher, Section, Subject } from '../../types';
+import { ScheduleEntry, TimeSlot, Teacher, Section, Subject, GenerationResult } from '../../types';
+import GenerationResultsModal from '../../components/schedule/GenerationResultsModal';
 import { formatTime24To12 } from '../../lib/helpers';
 
 export default function ScheduleBuilderPage() {
@@ -30,7 +33,28 @@ export default function ScheduleBuilderPage() {
     saveScheduleEntry,
     clearScheduleEntry,
     conflicts,
+    regenerateAllSchedules,
   } = useApp();
+
+  // Auto-generate status states
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [generationResults, setGenerationResults] = useState<GenerationResult | null>(null);
+  const [lastGenTime, setLastGenTime] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const handleAutoGenerateAll = async () => {
+    setGenerating(true);
+    try {
+      const res = await regenerateAllSchedules();
+      if (res) {
+        setGenerationResults(res);
+        setLastGenTime(new Date().toLocaleTimeString());
+        setShowResultsModal(true);
+      }
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Selection state
   const [viewBy, setViewBy] = useState<'section' | 'teacher'>('section');
@@ -119,6 +143,8 @@ export default function ScheduleBuilderPage() {
       subject_id: formSubjectId,
       time_slot_id: selectedSlotId,
       day: selectedDay,
+      source: 'manual',
+      teacher_load_id: null,
     });
 
     setSidePanelOpen(false);
@@ -164,8 +190,48 @@ export default function ScheduleBuilderPage() {
     <DashboardLayout>
       <div id="schedule-module-canvas" className="p-6 md:p-8 space-y-6 relative min-h-[calc(100vh-4rem)]">
         
+        {/* Auto-Generation Control Banner */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <Bot className="w-5 h-5 text-blue-600 animate-bounce" />
+              <span>Automated Scheduling Engine</span>
+            </h3>
+            <p className="text-2xs text-slate-500 max-w-lg">
+              Place teaching loads into open time slots automatically. Respects teacher specializations, shifts, and double-booking constraints.
+            </p>
+            {lastGenTime && generationResults && (
+              <div className="text-3xs text-slate-400 font-semibold mt-1 flex items-center gap-1.5">
+                <span>Last generated: {lastGenTime}</span>
+                <span>&bull;</span>
+                <span className="text-emerald-600 font-bold">{generationResults.fully_placed.length} fully placed</span>
+                <span>&bull;</span>
+                <span className="text-amber-600 font-bold">{generationResults.partially_placed.length} partially placed</span>
+                <span>&bull;</span>
+                <span className="text-red-500 font-bold">{generationResults.not_placed.length} not placed</span>
+                <span>&bull;</span>
+                <button
+                  onClick={() => setShowResultsModal(true)}
+                  className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                >
+                  [View Full Report]
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleAutoGenerateAll}
+            disabled={generating}
+            className="px-4.5 py-2.5 bg-blue-600 hover:bg-blue-750 text-white font-semibold rounded-lg text-xs shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer self-start sm:self-center shrink-0 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+            <span>{generating ? 'Generating...' : 'Auto-Generate ALL Schedules'}</span>
+          </button>
+        </div>
+
         {/* Filter Control Bar Header */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="bg-white p-6 rounded-2xl border border-slate-205 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-slate-950 flex items-center gap-2.5">
               <Calendar className="w-6 h-6 text-blue-600" />
@@ -322,6 +388,14 @@ export default function ScheduleBuilderPage() {
                           >
                             {entry ? (
                               <div className="space-y-1.5 text-center">
+                                {entry.source === 'auto_generated' && (
+                                  <div className="flex justify-center mb-1">
+                                    <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-600 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full border border-slate-200">
+                                      <Bot className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                                      Auto
+                                    </span>
+                                  </div>
+                                )}
                                 <h5 className="font-bold text-slate-900 text-xs tracking-tight line-clamp-2">
                                   {subjectObj?.name || 'Invalid Subject'}
                                 </h5>
@@ -519,6 +593,14 @@ export default function ScheduleBuilderPage() {
         )}
 
       </div>
+
+      {/* Auto-Generate Results Modal */}
+      <GenerationResultsModal
+        isOpen={showResultsModal}
+        onClose={() => setShowResultsModal(false)}
+        results={generationResults}
+        onRegenerateAll={handleAutoGenerateAll}
+      />
     </DashboardLayout>
   );
 }

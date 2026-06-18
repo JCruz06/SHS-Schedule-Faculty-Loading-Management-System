@@ -1,4 +1,4 @@
-import { Teacher, Strand, Section, Subject, TimeSlot, ScheduleEntry, ConflictResult } from '../types';
+import { Teacher, Strand, Section, Subject, TimeSlot, ScheduleEntry, ConflictResult, TeacherLoad } from '../types';
 
 export function runConflictChecks({
   teachers,
@@ -7,6 +7,7 @@ export function runConflictChecks({
   subjects,
   timeSlots,
   scheduleEntries,
+  teacherLoads = [],
 }: {
   teachers: Teacher[];
   strands: Strand[];
@@ -14,6 +15,7 @@ export function runConflictChecks({
   subjects: Subject[];
   timeSlots: TimeSlot[];
   scheduleEntries: ScheduleEntry[];
+  teacherLoads?: TeacherLoad[];
 }): ConflictResult[] {
   const conflicts: ConflictResult[] = [];
   let conflictCounter = 1;
@@ -225,6 +227,28 @@ export function runConflictChecks({
         severity: 'warning',
         affectedSubject: subject.name,
         affectedSubjectId: subject.id,
+      });
+    }
+  }
+
+  // 8. OUT OF SYNC LOAD CHECK
+  for (const load of teacherLoads) {
+    if (load.placement_status === 'out_of_sync') {
+      const teacherObj = teacherMap.get(load.teacher_id);
+      const subjectObj = subjectMap.get(load.subject_id);
+      const sectionObj = sectionMap.get(load.section_id);
+
+      conflicts.push({
+        id: nextId(),
+        type: 'Out of Sync Load',
+        description: `Teaching load for ${teacherObj?.name || 'teacher'} (${subjectObj?.name || 'subject'} → ${sectionObj?.name || 'section'}) is out of sync due to changes in curricular hours.`,
+        severity: 'warning',
+        affectedTeacher: teacherObj?.name,
+        affectedTeacherId: load.teacher_id,
+        affectedSection: sectionObj?.name,
+        affectedSectionId: load.section_id,
+        affectedSubject: subjectObj?.name,
+        affectedSubjectId: load.subject_id,
       });
     }
   }

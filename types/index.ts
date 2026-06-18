@@ -51,13 +51,15 @@ export interface ScheduleEntry {
   section_id: string;
   subject_id: string;
   time_slot_id: string;
-  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
+  day: string;
+  source?: 'auto_generated' | 'manual';
+  teacher_load_id?: string | null;
   created_at?: string;
 }
 
 export interface ConflictResult {
   id: string;
-  type: 'Teacher Double-Booking' | 'Section Double-Booking' | 'Specialization Mismatch' | 'Shift Violation' | 'Teacher Overload' | 'Incomplete Section Schedule' | 'Unassigned Subject';
+  type: 'Teacher Double-Booking' | 'Section Double-Booking' | 'Specialization Mismatch' | 'Shift Violation' | 'Teacher Overload' | 'Incomplete Section Schedule' | 'Unassigned Subject' | 'Out of Sync Load';
   description: string;
   severity: 'error' | 'warning';
   affectedTeacher?: string;
@@ -81,4 +83,28 @@ export interface FacultyLoadingSummary {
   ancillaryHoursPerWeek: number;
   totalHoursPerWeek: number;
   loadStatus: 'normal' | 'warning' | 'overloaded';
+}
+
+export interface TeacherLoad {
+  id: string;
+  teacher_id: string;
+  subject_id: string;
+  section_id: string;
+  required_hours_per_week: number;
+  placement_status: 'pending' | 'fully_placed' | 'partially_placed' | 'not_placed' | 'out_of_sync';
+  placed_hours: number;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+  // joined data for display
+  teacher?: Teacher;
+  subject?: Subject;
+  section?: Section;
+}
+
+export interface GenerationResult {
+  fully_placed: TeacherLoad[];
+  partially_placed: TeacherLoad[];
+  not_placed: TeacherLoad[];
+  total_processed: number;
 }
