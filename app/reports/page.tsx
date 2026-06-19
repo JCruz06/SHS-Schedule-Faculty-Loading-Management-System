@@ -23,7 +23,7 @@ export default function ReportsPage() {
 
   // Active Report Preview states
   const [activeReport, setActiveReport] = useState<'teacher' | 'section' | 'loading' | 'summary' | null>(null);
-  
+
   // Selectors for specific reports
   const [selectedTeacherId, setSelectedTeacherId] = useState(teachers.length > 0 ? teachers[0].id : '');
   const [selectedSectionId, setSelectedSectionId] = useState(sections.length > 0 ? sections[0].id : '');
@@ -59,7 +59,7 @@ export default function ReportsPage() {
   return (
     <DashboardLayout>
       <div id="reports-canvas" className="p-6 md:p-8 space-y-8 print:p-0">
-        
+
         {/* Reports Header (Hidden on print) */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 print:hidden">
           <div>
@@ -73,7 +73,7 @@ export default function ReportsPage() {
 
         {/* Report choices grid (Hidden on print) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
-          
+
           {/* Card 1: Individual Teacher Calendar */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs hover:shadow-xs transition-all space-y-4">
             <div className="flex items-start justify-between">
@@ -198,7 +198,7 @@ export default function ReportsPage() {
         {activeReport && (
           <div className="fixed inset-0 z-50 bg-slate-900/70 overflow-y-auto flex items-start justify-center p-4 md:p-8 backdrop-blur-3xs pt-12 print:static print:bg-white print:p-0">
             <div className="bg-white rounded-2xl max-w-4xl w-full border border-slate-200 overflow-hidden shadow-2xl flex flex-col min-h-[500px] animate-in fade-in zoom-in-95 duration-200 print:border-none print:shadow-none print:rounded-none">
-              
+
               {/* Modal controls (Hidden on print) */}
               <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between print:hidden">
                 <span className="text-2xs font-extrabold text-blue-700 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded">
@@ -223,7 +223,7 @@ export default function ReportsPage() {
 
               {/* REPORT DOCUMENT CANVAS (THE PRINT-SHEET CONTAINER) */}
               <div id="school-report-sheet" className="p-12 md:p-16 text-slate-900 space-y-8 font-serif leading-relaxed text-sm bg-white print:p-0">
-                
+
                 {/* Official standard DepEd Letterhead */}
                 <div className="text-center flex flex-col items-center border-b-2 border-double border-slate-800 pb-5">
                   <div className="w-10 h-10 bg-slate-900 text-white rounded-full flex items-center justify-center font-bold text-lg mb-2">
@@ -231,9 +231,9 @@ export default function ReportsPage() {
                   </div>
                   <p className="text-3xs uppercase tracking-widest font-semibold text-slate-550 leading-none">Republic of the Philippines</p>
                   <h1 className="text-xs uppercase font-extrabold tracking-wider leading-none mt-1 text-slate-800">Department of Education</h1>
-                  <p className="text-11px font-medium italic text-slate-600">Region IV-A (CALABARZON) · Division of Laguna</p>
-                  <p className="text-xs uppercase font-extrabold tracking-wide mt-2 text-blue-900 font-sans">SILANGAN NATIONAL HIGH SCHOOL</p>
-                  <p className="text-4xs font-mono text-slate-400 mt-0.5">School ID: 301380 · Brgy. San Antonio, San Pedro City</p>
+                  <p className="text-11px font-medium italic text-slate-600">Region IV-A (CALABARZON) · Division of Malvar</p>
+                  <p className="text-xs uppercase font-extrabold tracking-wide mt-2 text-blue-900 font-sans">MALVAR SENIOR SCHOOL</p>
+                  {/* <p className="text-4xs font-mono text-slate-400 mt-0.5">School ID: 301380 · Brgy. San Antonio, San Pedro City</p> */}
                 </div>
 
                 {/* Report Specific Details */}
@@ -431,7 +431,7 @@ export default function ReportsPage() {
                         {loadingSummaries.map((sum) => {
                           const isWarning = sum.totalHoursPerWeek > sum.totalHoursPerWeek - 5 && sum.totalHoursPerWeek <= sum.totalHoursPerWeek;
                           const isOver = sum.totalHoursPerWeek > (sum.totalHoursPerWeek || 30);
-                          
+
                           let statusText = 'Compliant';
                           if (sum.totalHoursPerWeek > 30) {
                             statusText = 'Overloaded Item';
@@ -460,18 +460,22 @@ export default function ReportsPage() {
                     <p className="text-3xs font-semibold uppercase tracking-wider text-slate-400">Verified and Compiled By:</p>
                     <div>
                       <p className="font-extrabold text-xs uppercase border-b border-slate-400 pb-0.5 inline-block min-w-52">
-                        {teachers[2]?.name || 'Sir Jester C. Cruz'}
+                        {/* {teachers[2]?.name || 'Sir Jester C. Cruz'} */}
+                        {'Mrs. Raquel M. Cruz'}
                       </p>
-                      <p className="text-4xs text-slate-405 leading-relaxed font-semibold mt-1 uppercase tracking-wide">SILANGAN HIGH SYSTEM ADMINISTRATOR / COORDINATOR</p>
+                      <p className="text-4xs text-slate-405 leading-relaxed font-semibold mt-1 uppercase tracking-wide">MALVAR SENIOR HIGH COORDINATOR</p>
                     </div>
                   </div>
-                  <div className="text-right space-y-10 flex flex-col items-end">
-                    <p className="text-3xs font-semibold uppercase tracking-wider text-slate-400 self-start">Approved and Endorsed By:</p>
-                    <div className="text-left">
-                      <p className="font-extrabold text-xs uppercase border-b border-slate-400 pb-0.5 inline-block min-w-52 text-left">
-                        {teachers[0]?.name || 'Dr. Ronald M. Santos'}
-                      </p>
-                      <p className="text-4xs text-slate-405 leading-relaxed font-semibold mt-1 uppercase tracking-wide text-left">SECONDARY SCHOOL PRINCIPAL II / DEPED OFFICE</p>
+                  <div className="flex flex-col items-end">
+                    <div className="min-w-52 text-left space-y-10">
+                      <p className="text-3xs font-semibold uppercase tracking-wider text-slate-400">Approved and Endorsed By:</p>
+                      <div>
+                        <p className="font-extrabold text-xs uppercase border-b border-slate-400 pb-0.5 inline-block min-w-52">
+                          {/* {teachers[0]?.name || 'Dr. Ronald M. Santos'} */}
+                          {'Mr./Mrs. Principal'}
+                        </p>
+                        <p className="text-4xs text-slate-405 leading-relaxed font-semibold mt-1 uppercase tracking-wide">SCHOOL PRINCIPAL / DEPED OFFICE</p>
+                      </div>
                     </div>
                   </div>
                 </div>

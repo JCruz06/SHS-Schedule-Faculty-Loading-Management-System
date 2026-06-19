@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/AppContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 import {
   Calendar,
   Layers,
@@ -43,6 +44,9 @@ export default function ScheduleBuilderPage() {
   const [generationResults, setGenerationResults] = useState<GenerationResult | null>(null);
   const [lastGenTime, setLastGenTime] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+
+  // Custom confirmation modal state for Regenerate All
+  const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
 
   // Overload Warning modal states
   const [showOverloadModal, setShowOverloadModal] = useState(false);
@@ -93,6 +97,70 @@ export default function ScheduleBuilderPage() {
   const [formTeacherId, setFormTeacherId] = useState('');
   const [formSubjectId, setFormSubjectId] = useState('');
   const [formSectionId, setFormSectionId] = useState('');
+
+  // Local state for dropdown options matching active teacher loads
+  const [activeTeacherLoads, setActiveTeacherLoads] = useState<TeacherLoad[]>([]);
+  const [loadingLoads, setLoadingLoads] = useState(false);
+
+  // Fetch teaching loads for the selected teacher dynamically
+  useEffect(() => {
+    if (!formTeacherId) {
+      setActiveTeacherLoads([]);
+      return;
+    }
+    
+    let isMounted = true;
+    const fetchTeacherLoads = async () => {
+      setLoadingLoads(true);
+      try {
+        const res = await fetch(`/api/teacher-loads?teacher_id=${formTeacherId}`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setActiveTeacherLoads(data);
+        }
+      } catch (err) {
+        console.error('Error fetching teacher loads:', err);
+      } finally {
+        if (isMounted) setLoadingLoads(false);
+      }
+    };
+    
+    fetchTeacherLoads();
+    return () => {
+      isMounted = false;
+    };
+  }, [formTeacherId]);
+
+  // Keep dropdown selections in sync with fetched active teacher loads
+  useEffect(() => {
+    if (activeTeacherLoads.length > 0) {
+      // Check if current formSectionId is in the new loads list
+      const isCurrentSectionValid = activeTeacherLoads.some(l => l.section_id === formSectionId);
+      let targetSectionId = formSectionId;
+      
+      if (!isCurrentSectionValid) {
+        targetSectionId = activeTeacherLoads[0].section_id;
+        setFormSectionId(targetSectionId);
+      }
+      
+      // Check if current formSubjectId is in the loads list for that section
+      const isCurrentSubjectValid = activeTeacherLoads.some(
+        l => l.section_id === targetSectionId && l.subject_id === formSubjectId
+      );
+      
+      if (!isCurrentSubjectValid) {
+        const firstValidLoadForSection = activeTeacherLoads.find(l => l.section_id === targetSectionId);
+        if (firstValidLoadForSection) {
+          setFormSubjectId(firstValidLoadForSection.subject_id);
+        } else {
+          setFormSubjectId('');
+        }
+      }
+    } else {
+      setFormSectionId('');
+      setFormSubjectId('');
+    }
+  }, [activeTeacherLoads, formSectionId, formSubjectId]);
 
   // Determine which list of slots to render
   const currentSection = sections.find(s => s.id === activeSectionId);
@@ -161,6 +229,8 @@ export default function ScheduleBuilderPage() {
            l.section_id === formSectionId
     );
 
+    if (!matchingLoad) return;
+
     const payload = {
       teacher_id: formTeacherId,
       section_id: formSectionId,
@@ -168,13 +238,13 @@ export default function ScheduleBuilderPage() {
       time_slot_id: selectedSlotId,
       day: selectedDay,
       source: 'manual' as const,
-      teacher_load_id: matchingLoad ? matchingLoad.id : null,
+      teacher_load_id: matchingLoad.id,
     };
 
     const existingEntry = findEntry(selectedDay, selectedSlotId);
-    const isSameLoad = existingEntry && matchingLoad && existingEntry.teacher_load_id === matchingLoad.id;
+    const isSameLoad = existingEntry && existingEntry.teacher_load_id === matchingLoad.id;
 
-    if (matchingLoad && matchingLoad.placement_status === 'fully_placed' && !isSameLoad) {
+    if (matchingLoad.placement_status === 'fully_placed' && !isSameLoad) {
       setPendingSaveData(payload);
       setOverloadLoadDetails(matchingLoad);
       setShowOverloadModal(true);
@@ -209,11 +279,15 @@ export default function ScheduleBuilderPage() {
     return conflicts.filter(c => c.scheduleEntryId === entry.id);
   };
 
-  // Subject options linked to the selected section
-  const currentFormSection = sections.find(s => s.id === formSectionId);
-  const eligibleSubjects = currentFormSection
-    ? subjects.filter(sub => sub.strand_id === currentFormSection.strand_id)
-    : subjects;
+  // Section options linked to teacher loads
+  const eligibleSections = sections.filter(sec =>
+    activeTeacherLoads.some(load => load.section_id === sec.id)
+  );
+
+  // Subject options linked to teacher loads for the selected section
+  const eligibleSubjects = subjects.filter(sub =>
+    activeTeacherLoads.some(load => load.section_id === formSectionId && load.subject_id === sub.id)
+  );
 
   const currentCellConflict = conflicts.filter(c => {
     if (viewBy === 'section') {
@@ -306,9 +380,7 @@ export default function ScheduleBuilderPage() {
                   type="button"
                   onClick={() => {
                     setShowGenDropdown(false);
-                    if (confirm("Are you sure you want to regenerate everything? This will wipe all auto-generated schedule entries and rebuild from scratch. Manual entries will remain safe.")) {
-                      handleAutoGenerateAll(false);
-                    }
+                    setRegenConfirmOpen(true);
                   }}
                   className="w-full text-left px-4 py-2 text-xs text-red-700 hover:bg-red-50/50 font-semibold flex items-center gap-2 border-t border-slate-100 cursor-pointer"
                 >
@@ -562,59 +634,7 @@ export default function ScheduleBuilderPage() {
               {/* Form Input fields */}
               <form onSubmit={handleSaveEntry} className="flex-1 overflow-y-auto p-6 space-y-5">
                 
-                {/* Field 1: Class Section */}
-                <div>
-                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Target Class Section <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formSectionId}
-                    onChange={(e) => {
-                      setFormSectionId(e.target.value);
-                      // Auto select first eligible subject
-                      const sec = sections.find(s => s.id === e.target.value);
-                      const eligibleSubs = sec ? subjects.filter(sub => sub.strand_id === sec.strand_id) : subjects;
-                      if (eligibleSubs.length > 0) {
-                        setFormSubjectId(eligibleSubs[0].id);
-                      }
-                    }}
-                    disabled={viewBy === 'section'} // Lock if viewBy is section
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all disabled:opacity-75 disabled:bg-slate-100"
-                  >
-                    {sections.map(sec => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.name} (Grade {sec.grade_level})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Field 2: Select Course Subject */}
-                <div>
-                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Timetable Subject Course <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formSubjectId}
-                    onChange={(e) => setFormSubjectId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all overflow-hidden text-ellipsis"
-                  >
-                    {eligibleSubjects.length === 0 ? (
-                      <option value="">* No active subjects configured for this strand!</option>
-                    ) : (
-                      eligibleSubjects.map(sub => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name} (Req: {sub.required_specialization} · {sub.hours_per_week}h/wk)
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  {eligibleSubjects.length === 0 && (
-                    <p className="text-3xs text-red-500 mt-1.5">Ensure you add subjects under the target strand track before scheduling.</p>
-                  )}
-                </div>
-
-                {/* Field 3: Assign Instructor */}
+                {/* Field 1: Assign Instructor */}
                 <div>
                   <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     Assigned Faculty Instructor <span className="text-red-500">*</span>
@@ -630,6 +650,78 @@ export default function ScheduleBuilderPage() {
                         {teach.name} (Specialty: {teach.specialization})
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                {/* Warning message if selected teacher has no teacher loads */}
+                {!loadingLoads && activeTeacherLoads.length === 0 && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4.5 rounded-xl space-y-1 text-xs">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>No Teaching Loads Assigned</span>
+                    </div>
+                    <p>This teacher has no teaching loads assigned yet. Add a teaching load first from the Teacher Profile page.</p>
+                  </div>
+                )}
+
+                {/* Loading state indicator for teacher loads */}
+                {loadingLoads && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 p-3 rounded-lg animate-pulse">
+                    <div className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin" />
+                    <span>Syncing loads from database...</span>
+                  </div>
+                )}
+
+                {/* Field 2: Class Section */}
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Target Class Section <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formSectionId}
+                    onChange={(e) => {
+                      const newSecId = e.target.value;
+                      setFormSectionId(newSecId);
+                      const matchingLoad = activeTeacherLoads.find(l => l.section_id === newSecId);
+                      if (matchingLoad) {
+                        setFormSubjectId(matchingLoad.subject_id);
+                      }
+                    }}
+                    disabled={viewBy === 'section' || loadingLoads || activeTeacherLoads.length === 0} // Lock if viewBy is section, loading, or no loads
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all disabled:opacity-75 disabled:bg-slate-100"
+                  >
+                    {activeTeacherLoads.length === 0 ? (
+                      <option value="">No sections available</option>
+                    ) : (
+                      eligibleSections.map(sec => (
+                        <option key={sec.id} value={sec.id}>
+                          {sec.name} (Grade {sec.grade_level})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                {/* Field 3: Select Course Subject */}
+                <div>
+                  <label className="block text-2xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Timetable Subject Course <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formSubjectId}
+                    onChange={(e) => setFormSubjectId(e.target.value)}
+                    disabled={loadingLoads || activeTeacherLoads.length === 0}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-250 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all overflow-hidden text-ellipsis disabled:opacity-75 disabled:bg-slate-100"
+                  >
+                    {eligibleSubjects.length === 0 ? (
+                      <option value="">No subjects available</option>
+                    ) : (
+                      eligibleSubjects.map(sub => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} (Req: {sub.required_specialization} · {sub.hours_per_week}h/wk)
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -665,7 +757,8 @@ export default function ScheduleBuilderPage() {
                 <button
                   type="button"
                   onClick={handleSaveEntry}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  disabled={loadingLoads || activeTeacherLoads.length === 0 || !formSectionId || !formSubjectId}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <BookmarkCheck className="w-4 h-4" />
                   <span>Save Cell Assignment</span>
@@ -735,6 +828,18 @@ export default function ScheduleBuilderPage() {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={regenConfirmOpen}
+        title="Regenerate All Schedules"
+        message="Are you sure you want to regenerate everything? This will wipe all auto-generated schedule entries and rebuild from scratch. Manual entries will remain safe."
+        confirmLabel="Regenerate All"
+        cancelLabel="Cancel"
+        severity="warning"
+        onConfirm={() => handleAutoGenerateAll(false)}
+        onClose={() => setRegenConfirmOpen(false)}
+      />
+
     </DashboardLayout>
   );
 }

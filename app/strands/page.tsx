@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../../lib/AppContext';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import {
   Layers,
@@ -45,6 +46,12 @@ export default function StrandsSectionsPage() {
 
   const [sectionModalOpen, setSectionModalOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<Section | null>(null);
+
+  // Custom confirmation modal states
+  const [strandDeleteConfirmOpen, setStrandDeleteConfirmOpen] = useState(false);
+  const [strandToDelete, setStrandToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [sectionDeleteConfirmOpen, setSectionDeleteConfirmOpen] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Strand Form Fields
   const [strandName, setStrandName] = useState('');
@@ -91,12 +98,8 @@ export default function StrandsSectionsPage() {
   };
 
   const handleStrandDelete = (id: string, name: string) => {
-    if (confirm(`CRITICAL: Deleting Strand "${name}" will permanently clear all associated Sections, Subjects, and timetable entries under this strand. Do you want to proceed?`)) {
-      deleteStrand(id);
-      if (selectedStrandId === id) {
-        setSelectedStrandId('');
-      }
-    }
+    setStrandToDelete({ id, name });
+    setStrandDeleteConfirmOpen(true);
   };
 
   // Section CRUD handlers
@@ -134,9 +137,8 @@ export default function StrandsSectionsPage() {
   };
 
   const handleSectionDelete = (id: string, name: string) => {
-    if (confirm(`Remove Section timetable for "${name}"?`)) {
-      deleteSection(id);
-    }
+    setSectionToDelete({ id, name });
+    setSectionDeleteConfirmOpen(true);
   };
 
   // Categorize sections for active strand
@@ -483,6 +485,45 @@ export default function StrandsSectionsPage() {
             </div>
           </div>
         )}
+
+        <ConfirmationModal
+          isOpen={strandDeleteConfirmOpen}
+          title="Delete Strand Track"
+          message={`CRITICAL: Deleting Strand "${strandToDelete?.name}" will permanently clear all associated Sections, Subjects, and timetable entries under this strand. Do you want to proceed?`}
+          confirmLabel="Delete Track"
+          cancelLabel="Cancel"
+          severity="danger"
+          onConfirm={() => {
+            if (strandToDelete) {
+              deleteStrand(strandToDelete.id);
+              if (selectedStrandId === strandToDelete.id) {
+                setSelectedStrandId('');
+              }
+            }
+          }}
+          onClose={() => {
+            setStrandDeleteConfirmOpen(false);
+            setStrandToDelete(null);
+          }}
+        />
+
+        <ConfirmationModal
+          isOpen={sectionDeleteConfirmOpen}
+          title="Delete Class Section"
+          message={`Remove Section timetable for "${sectionToDelete?.name}"?`}
+          confirmLabel="Delete Section"
+          cancelLabel="Cancel"
+          severity="danger"
+          onConfirm={() => {
+            if (sectionToDelete) {
+              deleteSection(sectionToDelete.id);
+            }
+          }}
+          onClose={() => {
+            setSectionDeleteConfirmOpen(false);
+            setSectionToDelete(null);
+          }}
+        />
 
       </div>
     </DashboardLayout>

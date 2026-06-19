@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../../lib/AppContext';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import {
   BookOpen,
@@ -29,6 +30,10 @@ export default function SubjectsPage() {
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [affectedLoads, setAffectedLoads] = useState<any[]>([]);
   const [pendingPayload, setPendingPayload] = useState<any>(null);
+
+  // Custom confirmation modal states
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [subjectToDelete, setSubjectToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -84,9 +89,8 @@ export default function SubjectsPage() {
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Remove Subject course "${name}"? This will clear any timetable slots representing this course.`)) {
-      deleteSubject(id);
-    }
+    setSubjectToDelete({ id, name });
+    setDeleteConfirmOpen(true);
   };
 
   // Fuzzy matches
@@ -413,6 +417,24 @@ export default function SubjectsPage() {
             </div>
           </div>
         )}
+
+        <ConfirmationModal
+          isOpen={deleteConfirmOpen}
+          title="Delete Subject"
+          message={`Remove Subject course "${subjectToDelete?.name}"? This will clear any timetable slots representing this course.`}
+          confirmLabel="Remove Course"
+          cancelLabel="Cancel"
+          severity="danger"
+          onConfirm={() => {
+            if (subjectToDelete) {
+              deleteSubject(subjectToDelete.id);
+            }
+          }}
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setSubjectToDelete(null);
+          }}
+        />
 
       </div>
     </DashboardLayout>

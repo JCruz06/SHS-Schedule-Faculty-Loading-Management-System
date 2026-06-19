@@ -87,12 +87,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   ];
 
   return (
-    <div className="min-h-screen flex bg-gray-50 text-slate-800 antialiased font-sans">
+    <div className="h-screen flex bg-gray-50 text-slate-800 antialiased font-sans overflow-hidden">
       {/* Toast Overlay */}
       <ToastList />
 
       {/* Primary Sidebar (Desktop) */}
-      <aside className="hidden lg:flex flex-col w-72 bg-[#1E3A8A] border-r border-blue-900 shrink-0 text-white/90">
+      <aside className="hidden lg:flex flex-col w-72 bg-[#1E3A8A] border-r border-blue-900 shrink-0 text-white/90 h-screen sticky top-0">
         <div className="p-6 border-b border-white/10 flex items-center gap-3">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center font-bold text-[#1E3A8A] shrink-0 shadow-sm">
             <School className="w-5 h-5 text-[#1E3A8A]" />
@@ -269,7 +269,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       </aside>
 
       {/* Main Execution Canvas */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Header Block */}
         <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shrink-0 print:hidden shadow-xs">
           {/* Mobile hamburger icon toggle */}

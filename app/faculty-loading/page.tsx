@@ -46,7 +46,7 @@ export default function FacultyLoadingSummaryPage() {
   return (
     <DashboardLayout>
       <div id="faculty-loading-canvas" className="p-6 md:p-8 space-y-6 print:p-0">
-        
+
         {/* Page Title & Print triggers */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 print:hidden">
           <div>
@@ -107,7 +107,7 @@ export default function FacultyLoadingSummaryPage() {
 
         {/* PRINT HEAD FOR MEDIA PRINT */}
         <div className="hidden print:block text-center border-b pb-5 mb-6">
-          <h1 className="text-xl font-bold tracking-tight uppercase">SILANGAN NATIONAL HIGH SCHOOL</h1>
+          <h1 className="text-xl font-bold tracking-tight uppercase">MALVAR SENIOR HIGH SCHOOL</h1>
           <p className="text-xs text-slate-500 font-mono">Senior High Department · Silangan Portal</p>
           <h2 className="text-base font-bold uppercase mt-3">FACULTY LOADING & ASSIGNMENTS SUMMARY</h2>
           <p className="text-2xs font-semibold text-slate-600 mt-0.5">School Year {schoolYear} · {semester}</p>
@@ -159,13 +159,13 @@ export default function FacultyLoadingSummaryPage() {
                       <td className="py-4.5 px-5 font-bold text-slate-905 border-r border-slate-100 max-w-xs shrink-0">
                         <div className="flex items-center gap-1.5">
                           <span>{summary.teacherName}</span>
-                          {teacherLoads.filter(l => l.teacher_id === summary.teacherId).some(l => 
+                          {teacherLoads.filter(l => l.teacher_id === summary.teacherId).some(l =>
                             l.placement_status === 'out_of_sync' || l.placement_status === 'partially_placed'
                           ) && (
-                            <span title="Has Out of Sync or Partially Placed loads">
-                              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                            </span>
-                          )}
+                              <span title="Has Out of Sync or Partially Placed loads">
+                                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                              </span>
+                            )}
                         </div>
                         <div className="text-3xs font-semibold text-slate-400 mt-0.5">{summary.specialization}</div>
                       </td>

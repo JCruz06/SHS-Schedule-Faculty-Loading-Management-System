@@ -2,6 +2,7 @@
 
 import React, { useState, use } from 'react';
 import { useApp } from '../../../lib/AppContext';
+import { ConfirmationModal } from '../../../components/ui/ConfirmationModal';
 import { DashboardLayout } from '../../../components/layout/DashboardLayout';
 import {
   ArrowLeft,
@@ -44,6 +45,11 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
     section_id: string;
   } | null>(null);
   const [showGenDropdown, setShowGenDropdown] = useState(false);
+
+  // Custom confirmation modal states
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [loadToDelete, setLoadToDelete] = useState<{ id: string; subjectName: string; sectionName: string } | null>(null);
+  const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
 
   // Retrieve this teacher's details
   const teacher = teachers.find(t => t.id === id);
@@ -146,9 +152,8 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
   };
 
   const handleDeleteLoad = (loadId: string, subjectName: string, sectionName: string) => {
-    if (confirm(`Are you sure you want to remove the load for subject "${subjectName}" and section "${sectionName}"? This will clear its assigned schedule entries.`)) {
-      deleteTeacherLoad(loadId);
-    }
+    setLoadToDelete({ id: loadId, subjectName, sectionName });
+    setDeleteConfirmOpen(true);
   };
 
   const handleRegenerateSchedule = async (preserveExisting: boolean) => {
@@ -253,9 +258,7 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
                   type="button"
                   onClick={() => {
                     setShowGenDropdown(false);
-                    if (confirm(`Are you sure you want to regenerate all schedules for ${teacher.name}? This will wipe previous auto-generated entries for this teacher. Manual entries remain safe.`)) {
-                      handleRegenerateSchedule(false);
-                    }
+                    setRegenConfirmOpen(true);
                   }}
                   className="w-full text-left px-4 py-2.5 text-xs text-red-700 hover:bg-red-50/50 font-semibold flex items-center gap-2 border-t border-slate-100 cursor-pointer"
                 >
@@ -595,6 +598,35 @@ export default function TeacherProfilePage({ params }: { params: Promise<{ id: s
             </div>
           </div>
         )}
+
+        <ConfirmationModal
+          isOpen={deleteConfirmOpen}
+          title="Delete Teaching Load"
+          message={`Are you sure you want to remove the load for subject "${loadToDelete?.subjectName}" and section "${loadToDelete?.sectionName}"? This will clear its assigned schedule entries.`}
+          confirmLabel="Remove Load"
+          cancelLabel="Cancel"
+          severity="danger"
+          onConfirm={() => {
+            if (loadToDelete) {
+              deleteTeacherLoad(loadToDelete.id);
+            }
+          }}
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setLoadToDelete(null);
+          }}
+        />
+
+        <ConfirmationModal
+          isOpen={regenConfirmOpen}
+          title="Regenerate Faculty Schedule"
+          message={`Are you sure you want to regenerate all schedules for ${teacher?.name}? This will wipe previous auto-generated entries for this teacher. Manual entries remain safe.`}
+          confirmLabel="Regenerate"
+          cancelLabel="Cancel"
+          severity="warning"
+          onConfirm={() => handleRegenerateSchedule(false)}
+          onClose={() => setRegenConfirmOpen(false)}
+        />
 
       </div>
     </DashboardLayout>

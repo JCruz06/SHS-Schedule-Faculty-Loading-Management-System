@@ -49,7 +49,7 @@ export default function DashboardPage() {
   return (
     <DashboardLayout>
       <div id="dashboard-canvas" className="p-6 md:p-8 space-y-6">
-        
+
         {/* Welcome Header bar */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-150 shadow-xs">
           <div>
@@ -57,10 +57,12 @@ export default function DashboardPage() {
               Welcome back, Administrator
             </span>
             <h2 className="text-2xl font-bold text-slate-900 mt-2 tracking-tight">
-              Mabuhay, {user?.name || 'Administrator'}!
+              {/* Mabuhay, {user?.name || 'Administrator'}! */}
+              Mabuhay, {'Administrator'}!
+
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Silangan National High School Portal · Senior High School Scheduler
+              Malvar Senior High School Portal · Senior High School Scheduler
             </p>
           </div>
           <div className="text-left md:text-right shrink-0 border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
@@ -112,21 +114,19 @@ export default function DashboardPage() {
           {/* Card 4: Conflicts Badge */}
           <div
             onClick={() => router.push('/conflicts')}
-            className={`cursor-pointer p-5 rounded-2xl border transition-all flex items-center gap-4 hover:shadow-xs ${
-              totalConflicts > 0
-                ? 'bg-red-50/50 border-red-200 text-red-900 shadow-3xs'
-                : totalWarnings > 0
+            className={`cursor-pointer p-5 rounded-2xl border transition-all flex items-center gap-4 hover:shadow-xs ${totalConflicts > 0
+              ? 'bg-red-50/50 border-red-200 text-red-900 shadow-3xs'
+              : totalWarnings > 0
                 ? 'bg-amber-50/55 border-amber-200 text-amber-900 shadow-3xs'
                 : 'bg-emerald-50/30 border-emerald-250 text-emerald-900 shadow-3xs'
-            }`}
+              }`}
           >
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-              totalConflicts > 0
-                ? 'bg-red-650 text-white shadow-xs bg-red-600'
-                : totalWarnings > 0
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${totalConflicts > 0
+              ? 'bg-red-650 text-white shadow-xs bg-red-600'
+              : totalWarnings > 0
                 ? 'bg-amber-500 text-slate-950 shadow-xs'
                 : 'bg-emerald-600 text-white shadow-xs'
-            }`}>
+              }`}>
               {totalConflicts > 0 || totalWarnings > 0 ? (
                 <AlertOctagon className="w-5.5 h-5.5" />
               ) : (
@@ -233,7 +233,7 @@ export default function DashboardPage() {
                       const teacher = teachers.find(t => t.id === entry.teacher_id);
                       const section = sections.find(s => s.id === entry.section_id);
                       const subject = subjects.find(s => s.id === entry.subject_id);
-                      
+
                       // Check if this specific entry has any associated error conflict
                       const hasConflict = conflicts.some(c => c.scheduleEntryId === entry.id);
 

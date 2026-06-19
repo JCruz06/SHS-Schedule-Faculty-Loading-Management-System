@@ -24,14 +24,14 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    
+
     if (!email || !password) {
       setErrorMsg('Please enter a valid email and password.');
       return;
     }
-    
+
     setSubmitting(true);
-    
+
     try {
       const res = await login(email, password);
       if (res.success) {
@@ -48,7 +48,7 @@ export default function LoginPage() {
 
   return (
     <div id="login-screen" className="min-h-screen flex items-center justify-center bg-slate-900 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(30,58,138,0.3),rgba(255,255,255,0))] font-sans relative overflow-hidden">
-      
+
       {/* Decorative clean background mesh */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-600 to-sky-400"></div>
 
@@ -66,16 +66,16 @@ export default function LoginPage() {
             <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20 mb-4 ring-4 ring-blue-500/10 hover:rotate-6 transition-all duration-300">
               <School className="w-7 h-7" />
             </div>
-            
+
             <h2 className="text-xl font-bold text-white tracking-wider text-center">
               SHS SCHEDULE MANAGER
             </h2>
             <p className="text-slate-400 text-xs mt-1 text-center font-medium max-w-xs">
-              Senior High School & Faculty Loading Portal
+              Senior High School & Faculty Loading Portaldasds
             </p>
             <div className="mt-2.5 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <p className="text-3xs text-slate-500 font-mono tracking-wide">SILANGAN NATIONAL HIGH SCHOOL</p>
+              <p className="text-3xs text-slate-500 font-mono tracking-wide">MALVAR SENIOR HIGH SCHOOL</p>
             </div>
           </div>
 

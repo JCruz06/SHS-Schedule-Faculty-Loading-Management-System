@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 import { useApp } from '../../lib/AppContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import {
@@ -25,6 +26,10 @@ export default function TeachersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+
+  // Custom confirmation modal state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [teacherToDelete, setTeacherToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -74,9 +79,8 @@ export default function TeachersPage() {
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete teacher "${name}"? This removes any associated schedules.`)) {
-      deleteTeacher(id);
-    }
+    setTeacherToDelete({ id, name });
+    setDeleteConfirmOpen(true);
   };
 
   // Compute teaching hours for each teacher
@@ -388,6 +392,24 @@ export default function TeachersPage() {
             </div>
           </div>
         )}
+
+        <ConfirmationModal
+          isOpen={deleteConfirmOpen}
+          title="Delete Teacher"
+          message={`Are you sure you want to delete teacher "${teacherToDelete?.name}"? This removes any associated schedules.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          severity="danger"
+          onConfirm={() => {
+            if (teacherToDelete) {
+              deleteTeacher(teacherToDelete.id);
+            }
+          }}
+          onClose={() => {
+            setDeleteConfirmOpen(false);
+            setTeacherToDelete(null);
+          }}
+        />
 
       </div>
     </DashboardLayout>

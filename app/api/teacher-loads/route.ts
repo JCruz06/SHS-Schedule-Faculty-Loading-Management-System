@@ -95,9 +95,56 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Retroactively link any existing schedule entries for the same teacher + subject + section combination
+    const { data: matchedEntries, error: queryErr } = await supabase
+      .from('schedule_entries')
+      .select('id')
+      .eq('teacher_id', teacher_id)
+      .eq('subject_id', subject_id)
+      .eq('section_id', section_id)
+      .is('teacher_load_id', null);
+
+    if (queryErr) {
+      return NextResponse.json({ error: queryErr.message }, { status: 500 });
+    }
+
+    let finalData = data;
+
+    if (matchedEntries && matchedEntries.length > 0) {
+      // Update matching schedule entries to link to the new load ID
+      const { error: linkErr } = await supabase
+        .from('schedule_entries')
+        .update({ teacher_load_id: data.id })
+        .eq('teacher_id', teacher_id)
+        .eq('subject_id', subject_id)
+        .eq('section_id', section_id)
+        .is('teacher_load_id', null);
+
+      if (linkErr) {
+        return NextResponse.json({ error: linkErr.message }, { status: 500 });
+      }
+
+      // Re-fetch teaching load to reflect the database trigger recalculation of placed_hours
+      const { data: reFetched, error: fetchErr } = await supabase
+        .from('teacher_loads')
+        .select(`
+          *,
+          teacher:teachers(*),
+          subject:subjects(*),
+          section:sections(*)
+        `)
+        .eq('id', data.id)
+        .single();
+
+      if (fetchErr) {
+        return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+      }
+      finalData = reFetched;
+    }
+
     // Format the returned teacher details
-    if (data.teacher) {
-      let role = data.teacher.ancillary_role || '';
+    if (finalData.teacher) {
+      let role = finalData.teacher.ancillary_role || '';
       let roleName = role;
       let hours = 0;
       if (role.includes('|')) {
@@ -105,14 +152,14 @@ export async function POST(request: Request) {
         roleName = parts[0];
         hours = parseInt(parts[1], 10) || 0;
       }
-      data.teacher = {
-        ...data.teacher,
+      finalData.teacher = {
+        ...finalData.teacher,
         ancillary_role: roleName || undefined,
         ancillary_hours_per_week: hours
       };
     }
 
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(finalData, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }
